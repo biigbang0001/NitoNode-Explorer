@@ -51,8 +51,6 @@ L'installation est entièrement automatisée. Suis ces étapes pour installer le
    - Installation de l'explorateur eIquidus avec MongoDB (https://www.mongodb.com/) pour la base de données.
    - Configuration de Nginx (https://nginx.org/) comme reverse proxy avec un certificat SSL via Certbot (https://certbot.eff.org/).
    - Téléchargement des images personnalisées (logo, favicons, etc.) depuis le dépôt GitHub.
-   - Placement des favicons (`favicon-32.png`, `favicon-128.png`, `favicon-180.png`, `favicon-192.png`) dans `explorer/public/`.
-   - Placement des autres images (`logo.png`, `header-logo.png`, `page-title-img.png`, `external.png`, `coingecko.png`) dans `explorer/public/img/`.
    - Téléchargement et configuration de `settings.json` avec les identifiants choisis.
    - Lancement de l'explorateur avec PM2 (https://pm2.keymetrics.io/) et synchronisation automatique de la blockchain.
 
