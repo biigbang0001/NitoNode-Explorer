@@ -126,13 +126,13 @@ ufw allow 27017 # MongoDB (Docker)
 ufw allow "$RPC_PORT" # Port RPC
 ufw --force enable
 
-# Étape 10 : Installer Node.js avec NVM (v20.9.0 recommandé)
-echo "Installation de Node.js 20.9.0..."
+# Étape 10 : Installer Node.js avec NVM (version 16.20.2 pour compatibilité)
+echo "Installation de Node.js 16.20.2..."
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-nvm install 20.9.0
-nvm use 20.9.0
+nvm install 16.20.2
+nvm use 16.20.2
 node -v
 npm -v
 
@@ -148,11 +148,12 @@ if ! docker --version; then
   exit 1
 fi
 
-# Étape 12 : Lancer MongoDB 7.0.2 en conteneur Docker
+# Étape 12 : Lancer MongoDB 7.0.2 en conteneur Docker avec redémarrage automatique
 echo "Lancement de MongoDB 7.0.2 via Docker..."
 docker pull mongo:7.0.2
 mkdir -p /data/db /var/log/mongodb
 docker run -d --name mongodb \
+  --restart unless-stopped \
   -p 27017:27017 \
   -v /data/db:/data/db \
   -v /var/log/mongodb:/var/log/mongodb \
@@ -281,13 +282,42 @@ nginx -t && systemctl restart nginx
 # Étape 18 : Installer et lancer avec PM2
 echo "Installation de PM2 et démarrage..."
 npm install -g pm2
+# Vérifier que PM2 est bien installé
+if ! command -v pm2 &> /dev/null; then
+  echo "Erreur : PM2 n'a pas pu être installé correctement. Tentative de réinstallation..."
+  npm install -g pm2 --force
+fi
+# Ajouter le chemin de PM2 au PATH si nécessaire
+if ! command -v pm2 &> /dev/null; then
+  export PATH="$PATH:/root/.nvm/versions/node/v16.20.2/bin"
+  echo 'export PATH="$PATH:/root/.nvm/versions/node/v16.20.2/bin"' >> ~/.bashrc
+  source ~/.bashrc
+fi
+# Vérifier une dernière fois
+if ! command -v pm2 &> /dev/null; then
+  echo "Erreur : PM2 n'est toujours pas accessible. Vérifiez l'installation de Node.js et npm."
+  exit 1
+fi
 cd /root/explorer
 npm run start-pm2
 
-# Étape 19 : Synchronisation
-echo "Configuration de la synchronisation..."
+# Étape 19 : Configurer PM2 pour redémarrer automatiquement au boot
+echo "Configuration de PM2 pour redémarrage automatique..."
+pm2 startup systemd -u root
+pm2 save
+
+# Étape 20 : Synchronisation initiale et configuration du cron
+echo "Synchronisation initiale de l'explorateur..."
+cd /root/explorer
 npm run sync-blocks
-echo "*/1 * * * * cd /root/explorer && npm run sync-blocks > /dev/null 2>&1" | crontab -
+
+# Configurer le cron pour synchroniser toutes les minutes
+echo "Configuration du cron pour synchronisation automatique toutes les minutes..."
+echo "*/1 * * * * cd /root/explorer && /root/.nvm/versions/node/v16.20.2/bin/npm run sync-blocks > /dev/null 2>&1" | crontab -
+
+# Vérifier que le cron est bien configuré
+echo "Vérification de la configuration du cron..."
+crontab -l
 
 echo "🎉 Installation complète terminée !"
 echo "Node NitoCoin et l'explorateur eIquidus sont opérationnels."
