@@ -11,6 +11,10 @@ echo "Entrez le nom de domaine pour l’explorateur (ex. : nito-explorer.nitopoo
 read DOMAIN
 echo "Entrez le port RPC de votre portefeuille (ex. : 8825 pour Nito) :"
 read RPC_PORT
+echo "Entrez le nom d'utilisateur RPC pour le nœud Nito (ex. : user) :"
+read RPC_USER
+echo "Entrez le mot de passe RPC pour le nœud Nito (ex. : pass) :"
+read RPC_PASSWORD
 
 # Étape 2 : Créer le dossier NitoNode-Explorer localement
 echo "Création du dossier NitoNode-Explorer..."
@@ -42,7 +46,7 @@ fi
 # Appliquer le PATH immédiatement dans ce script
 export PATH="$PATH:/root/nito-node/bin"
 
-# Étape 5 : Configuration du fichier nito.conf
+# Étape 5 : Configuration du fichier nito.conf avec les identifiants personnalisés
 mkdir -p /root/.nito
 cat <<EOF > /root/.nito/nito.conf
 maxconnections=300
@@ -52,9 +56,9 @@ txindex=1
 prune=0
 datadir=/root/.nito
 port=8820
-rpcuser=user
-rpcpassword=pass
-rpcport=8825
+rpcuser=$RPC_USER
+rpcpassword=$RPC_PASSWORD
+rpcport=$RPC_PORT
 rpcbind=0.0.0.0
 rpcallowip=0.0.0.0/0
 zmqpubhashblock=tcp://0.0.0.0:28825
@@ -211,8 +215,13 @@ cp /root/NitoNode-Explorer/header-logo.png /root/explorer/public/img/
 cp /root/NitoNode-Explorer/page-title-img.png /root/explorer/public/img/
 cp /root/NitoNode-Explorer/external.png /root/explorer/public/img/
 cp /root/NitoNode-Explorer/coingecko.png /root/explorer/public/img/
-# Copier settings.json dans explorer/
+
+# Copier settings.json dans explorer/ et modifier les identifiants
 cp /root/NitoNode-Explorer/settings.json /root/explorer/
+# Modifier settings.json pour insérer les identifiants personnalisés
+sed -i "s/\"username\": \"user\"/\"username\": \"$RPC_USER\"/" /root/explorer/settings.json
+sed -i "s/\"password\": \"pass\"/\"password\": \"$RPC_PASSWORD\"/" /root/explorer/settings.json
+sed -i "s/\"port\": 8825/\"port\": $RPC_PORT/" /root/explorer/settings.json
 
 # Étape 16 : Installer Certbot et générer le certificat via Nginx
 echo "Installation de Certbot..."
@@ -282,5 +291,5 @@ echo "Accédez à l'explorateur via : https://$DOMAIN"
 echo "Détails du nœud :"
 echo " - Port P2P : 8820"
 echo " - Port RPC : $RPC_PORT"
-echo " - Username : user"
-echo " - Password : pass"
+echo " - Username : $RPC_USER"
+echo " - Password : $RPC_PASSWORD"
