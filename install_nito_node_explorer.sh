@@ -9,7 +9,7 @@ fi
 # Étape 1 : Demander les informations
 echo "Entrez le nom de domaine pour l’explorateur (ex. : nito-explorer.nitopool.fr) :"
 read DOMAIN
-echo "Entrez le port RPC du node Nito (ex. : 8825 pour Nito) :"
+echo "Entrez le port RPC de votre portefeuille (ex. : 8825 pour Nito) :"
 read RPC_PORT
 echo "Entrez le nom d'utilisateur RPC pour le nœud Nito (ex. : user) :"
 read RPC_USER
@@ -23,6 +23,24 @@ if [ -z "$INSTALL_DIR" ]; then
 fi
 # S'assurer que le répertoire se termine sans "/"
 INSTALL_DIR=$(echo "$INSTALL_DIR" | sed 's:/*$::')
+# Vérifier que le répertoire ne contient pas d'espaces ou de caractères spéciaux
+if echo "$INSTALL_DIR" | grep -q "[[:space:]]"; then
+  echo "Erreur : Le répertoire d'installation ne doit pas contenir d'espaces."
+  exit 1
+fi
+if ! echo "$INSTALL_DIR" | grep -qE '^/[a-zA-Z0-9/_-]+$'; then
+  echo "Erreur : Le répertoire d'installation contient des caractères non valides. Utilisez uniquement des lettres, chiffres, /, _, ou -."
+  exit 1
+fi
+# Vérifier que les identifiants RPC ne contiennent pas de caractères spéciaux problématiques
+if echo "$RPC_USER" | grep -q "[[:space:]\"']"; then
+  echo "Erreur : Le nom d'utilisateur RPC ne doit pas contenir d'espaces, de guillemets ou d'apostrophes."
+  exit 1
+fi
+if echo "$RPC_PASSWORD" | grep -q "[[:space:]\"']"; then
+  echo "Erreur : Le mot de passe RPC ne doit pas contenir d'espaces, de guillemets ou d'apostrophes."
+  exit 1
+fi
 
 # Définir les chemins dynamiques
 NITO_DIR="$INSTALL_DIR/.nito"
@@ -40,11 +58,39 @@ if [ ! -d "$INSTALL_DIR" ]; then
   chown root:root "$INSTALL_DIR"
   chmod 755 "$INSTALL_DIR"
 fi
+# Vérifier que root peut écrire dans le répertoire
+if ! touch "$INSTALL_DIR/.test_write" 2>/dev/null; then
+  echo "Erreur : L'utilisateur root n'a pas les permissions d'écriture dans $INSTALL_DIR. Vérifiez les permissions du répertoire."
+  exit 1
+fi
+rm -f "$INSTALL_DIR/.test_write"
+# Vérifier que root peut écrire dans les sous-dossiers
+mkdir -p "$NITO_DIR" 2>/dev/null
+if ! touch "$NITO_DIR/.test_write" 2>/dev/null; then
+  echo "Erreur : L'utilisateur root n'a pas les permissions d'écriture dans $NITO_DIR. Vérifiez les permissions du répertoire."
+  exit 1
+fi
+rm -f "$NITO_DIR/.test_write"
+mkdir -p "$EXPLORER_DIR" 2>/dev/null
+if ! touch "$EXPLORER_DIR/.test_write" 2>/dev/null; then
+  echo "Erreur : L'utilisateur root n'a pas les permissions d'écriture dans $EXPLORER_DIR. Vérifiez les permissions du répertoire."
+  exit 1
+fi
+rm -f "$EXPLORER_DIR/.test_write"
 
 # Étape 3 : Mise à jour et installation des dépendances nécessaires
 echo "Mise à jour du système et installation des dépendances..."
-sudo apt update && sudo apt upgrade -y
+sudo apt update
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec de la mise à jour des dépôts apt. Vérifiez votre connexion Internet."
+  exit 1
+fi
+sudo apt upgrade -y
 sudo apt install -y curl cmake git build-essential libtool autotools-dev automake pkg-config bsdmainutils python3 software-properties-common ufw net-tools jq unzip libzmq3-dev libminiupnpc-dev libssl-dev libevent-dev wget
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec de l'installation des dépendances. Vérifiez votre connexion Internet et les dépôts apt."
+  exit 1
+fi
 
 # Étape 4 : Installer une version de base de Node.js et npm pour NVM
 echo "Installation d'une version de base de Node.js et npm pour NVM..."
@@ -59,7 +105,15 @@ fi
 echo "🚀 Installation du Node NitoCoin démarrée..."
 cd "$INSTALL_DIR"
 wget https://github.com/NitoNetwork/Nito-core/releases/download/v2.0.1/nito-2-0-1-x86_64-linux-gnu.tar.gz
+if [ $? -ne 0 ] || [ ! -f "nito-2-0-1-x86_64-linux-gnu.tar.gz" ]; then
+  echo "Erreur : Échec du téléchargement de nito-2-0-1-x86_64-linux-gnu.tar.gz. Vérifiez votre connexion Internet."
+  exit 1
+fi
 tar -xzvf nito-2-0-1-x86_64-linux-gnu.tar.gz
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec de l'extraction de nito-2-0-1-x86_64-linux-gnu.tar.gz. Le fichier peut être corrompu."
+  exit 1
+fi
 rm nito-2-0-1-x86_64-linux-gnu.tar.gz
 mv nito-*/ nito-node
 
@@ -112,7 +166,7 @@ User=root
 Group=root
 Type=forking
 ExecStart=$NITO_NODE_DIR/bin/nitod -daemon -conf=$NITO_DIR/nito.conf
-ExecStop=$NITO_NODE_DIR/bin/nito-cli stop
+ExecStop=$NITO_NODE_DIR/bin/nito-cli -conf=$NITO_DIR/nito.conf stop
 Restart=on-failure
 RestartSec=15
 StartLimitIntervalSec=120
@@ -127,6 +181,11 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable nitocoin
 sudo systemctl start nitocoin
+# Vérifier que le service a démarré correctement
+if ! sudo systemctl status nitocoin | grep -q "active (running)"; then
+  echo "Erreur : Échec du démarrage du service nitocoin. Vérifiez les logs avec 'journalctl -u nitocoin'."
+  exit 1
+fi
 
 # Étape 8 : Configuration du firewall UFW pour le nœud
 echo "Configuration du firewall pour le nœud Nito..."
@@ -141,7 +200,11 @@ echo "🔍 Vérification du statut du node avec systemctl :"
 sudo systemctl status nitocoin | grep Active
 
 echo "🔍 Vérification RPC avec nito-cli :"
-nito-cli getblockcount
+nito-cli -conf="$NITO_DIR/nito.conf" getblockcount
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec de la vérification RPC avec nito-cli. Vérifiez que le nœud est opérationnel et que les identifiants RPC sont corrects."
+  exit 1
+fi
 
 # Recharger .bashrc pour appliquer le PATH au shell courant
 source ~/.bashrc
@@ -159,9 +222,17 @@ ufw --force enable
 # Étape 11 : Installer Node.js avec NVM (version 16.20.2 pour compatibilité)
 echo "Installation de Node.js 16.20.2 via NVM..."
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec de l'installation de NVM. Vérifiez votre connexion Internet."
+  exit 1
+fi
 export NVM_DIR="/root/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 nvm install 16.20.2
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec de l'installation de Node.js 16.20.2. Vérifiez votre connexion Internet."
+  exit 1
+fi
 nvm use 16.20.2
 node -v
 npm -v
@@ -172,6 +243,10 @@ NPM_PATH="/root/.nvm/versions/node/v16.20.2/bin/npm"
 # Étape 12 : Installer Docker
 echo "Installation de Docker..."
 apt install -y docker.io
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec de l'installation de Docker. Vérifiez votre connexion Internet et les dépôts apt."
+  exit 1
+fi
 systemctl start docker
 systemctl enable docker
 
@@ -184,6 +259,10 @@ fi
 # Étape 13 : Lancer MongoDB 7.0.2 en conteneur Docker avec redémarrage automatique
 echo "Lancement de MongoDB 7.0.2 via Docker..."
 docker pull mongo:7.0.2
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec du téléchargement de l'image MongoDB. Vérifiez votre connexion Internet."
+  exit 1
+fi
 mkdir -p /data/db /var/log/mongodb
 docker run -d --name mongodb \
   --restart unless-stopped \
@@ -214,12 +293,20 @@ EOF
 # Étape 14 : Installer Nginx
 echo "Installation de Nginx..."
 apt install nginx -y
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec de l'installation de Nginx. Vérifiez votre connexion Internet et les dépôts apt."
+  exit 1
+fi
 systemctl start nginx
 systemctl enable nginx
 
 # Étape 15 : Installer eIquidus
 echo "Téléchargement d’eIquidus dans $EXPLORER_DIR..."
 git clone https://github.com/team-exor/eiquidus "$EXPLORER_DIR"
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec du clonage du dépôt eIquidus. Vérifiez votre connexion Internet."
+  exit 1
+fi
 cd "$EXPLORER_DIR"
 "$NPM_PATH" install --only=prod
 
@@ -227,15 +314,55 @@ cd "$EXPLORER_DIR"
 echo "Téléchargement des images Nito et settings.json..."
 mkdir -p "$EXPLORER_DIR/public/img"
 wget -O "$TEMP_DIR/settings.json" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/settings.json"
+if [ $? -ne 0 ] || [ ! -f "$TEMP_DIR/settings.json" ]; then
+  echo "Erreur : Échec du téléchargement de settings.json. Vérifiez votre connexion Internet."
+  exit 1
+fi
 wget -O "$TEMP_DIR/logo.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/logo.png"
+if [ $? -ne 0 ] || [ ! -f "$TEMP_DIR/logo.png" ]; then
+  echo "Erreur : Échec du téléchargement de logo.png. Vérifiez votre connexion Internet."
+  exit 1
+fi
 wget -O "$TEMP_DIR/header-logo.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/header-logo.png"
+if [ $? -ne 0 ] || [ ! -f "$TEMP_DIR/header-logo.png" ]; then
+  echo "Erreur : Échec du téléchargement de header-logo.png. Vérifiez votre connexion Internet."
+  exit 1
+fi
 wget -O "$TEMP_DIR/page-title-img.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/page-title-img.png"
+if [ $? -ne 0 ] || [ ! -f "$TEMP_DIR/page-title-img.png" ]; then
+  echo "Erreur : Échec du téléchargement de page-title-img.png. Vérifiez votre connexion Internet."
+  exit 1
+fi
 wget -O "$TEMP_DIR/favicon-32.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/favicon-32.png"
+if [ $? -ne 0 ] || [ ! -f "$TEMP_DIR/favicon-32.png" ]; then
+  echo "Erreur : Échec du téléchargement de favicon-32.png. Vérifiez votre connexion Internet."
+  exit 1
+fi
 wget -O "$TEMP_DIR/favicon-128.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/favicon-128.png"
+if [ $? -ne 0 ] || [ ! -f "$TEMP_DIR/favicon-128.png" ]; then
+  echo "Erreur : Échec du téléchargement de favicon-128.png. Vérifiez votre connexion Internet."
+  exit 1
+fi
 wget -O "$TEMP_DIR/favicon-180.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/favicon-180.png"
+if [ $? -ne 0 ] || [ ! -f "$TEMP_DIR/favicon-180.png" ]; then
+  echo "Erreur : Échec du téléchargement de favicon-180.png. Vérifiez votre connexion Internet."
+  exit 1
+fi
 wget -O "$TEMP_DIR/favicon-192.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/favicon-192.png"
+if [ $? -ne 0 ] || [ ! -f "$TEMP_DIR/favicon-192.png" ]; then
+  echo "Erreur : Échec du téléchargement de favicon-192.png. Vérifiez votre connexion Internet."
+  exit 1
+fi
 wget -O "$TEMP_DIR/external.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/external.png"
+if [ $? -ne 0 ] || [ ! -f "$TEMP_DIR/external.png" ]; then
+  echo "Erreur : Échec du téléchargement de external.png. Vérifiez votre connexion Internet."
+  exit 1
+fi
 wget -O "$TEMP_DIR/coingecko.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/coingecko.png"
+if [ $? -ne 0 ] || [ ! -f "$TEMP_DIR/coingecko.png" ]; then
+  echo "Erreur : Échec du téléchargement de coingecko.png. Vérifiez votre connexion Internet."
+  exit 1
+fi
 
 # Copier les images dans les bons dossiers
 # Favicons dans explorer/public/
@@ -278,7 +405,12 @@ server {
     }
 }
 EOF
-nginx -t && systemctl restart nginx
+nginx -t
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec de la vérification de la configuration Nginx. Vérifiez les logs avec 'nginx -t'."
+  exit 1
+fi
+systemctl restart nginx
 
 echo "Génération du certificat SSL..."
 certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email admin@"$DOMAIN"
@@ -315,7 +447,12 @@ server {
 EOF
 ln -s /etc/nginx/sites-available/eiquidus /etc/nginx/sites-enabled/
 rm /etc/nginx/sites-enabled/default
-nginx -t && systemctl restart nginx
+nginx -t
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec de la vérification de la configuration Nginx. Vérifiez les logs avec 'nginx -t'."
+  exit 1
+fi
+systemctl restart nginx
 
 # Étape 19 : Installer et lancer avec PM2
 echo "Installation de PM2 et démarrage..."
@@ -333,7 +470,7 @@ if ! command -v pm2 &> /dev/null; then
 fi
 # Vérifier une dernière fois
 if ! command -v pm2 &> /dev/null; then
-  echo "Erreur : PM2 n'est toujours pas accessible. Vérifiez l'installation de Node.js et npm."
+  echo "Erreur : PM2 n'est toujours pas accessible. Vérifiez l'installation de Node.js et npm. Essayez d'exécuter '$NPM_PATH install -g pm2' manuellement."
   exit 1
 fi
 cd "$EXPLORER_DIR"
@@ -375,3 +512,4 @@ echo " - Port RPC : $RPC_PORT"
 echo " - Username : $RPC_USER"
 echo " - Password : $RPC_PASSWORD"
 echo " - Répertoire d'installation : $INSTALL_DIR"
+echo "Pour vérifier les logs du cron, utilisez : grep CRON /var/log/syslog"
