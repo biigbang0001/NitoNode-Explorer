@@ -192,14 +192,36 @@ echo "Configuration du firewall pour le nœud Nito..."
 sudo ufw allow 8820/tcp   # Port réseau P2P
 sudo ufw allow ssh        # SSH pour sécurité
 
-# Étape 9 : Vérifications du nœud avant de continuer
-echo "⏳ Attente démarrage node (20 sec)..."
+# Étape 9 : Attendre que le nœud soit complètement synchronisé
+echo "⏳ Attente que le nœud NitoCoin soit complètement synchronisé..."
 sleep 20
 
-echo "🔍 Vérification du statut du node avec systemctl :"
-sudo systemctl status nitocoin | grep Active
+# Vérifier l'état de la synchronisation avec getblockchaininfo
+while true; do
+  # Récupérer l'état de la synchronisation
+  BLOCKCHAIN_INFO=$(nito-cli -conf="$NITO_DIR/nito.conf" getblockchaininfo)
+  if [ $? -ne 0 ]; then
+    echo "Erreur : Impossible de récupérer l'état de la synchronisation du nœud. Vérifiez les logs avec 'journalctl -u nitocoin'."
+    exit 1
+  fi
 
-echo "🔍 Vérification RPC avec nito-cli :"
+  # Extraire le champ "initialblockdownload" et "blocks"
+  IBD=$(echo "$BLOCKCHAIN_INFO" | jq -r '.initialblockdownload')
+  BLOCKS=$(echo "$BLOCKCHAIN_INFO" | jq -r '.blocks')
+  HEADERS=$(echo "$BLOCKCHAIN_INFO" | jq -r '.headers')
+
+  # Vérifier si la synchronisation est terminée
+  if [ "$IBD" = "false" ] && [ "$BLOCKS" -eq "$HEADERS" ]; then
+    echo "🎉 Le nœud NitoCoin est complètement synchronisé ! Blocs : $BLOCKS"
+    break
+  else
+    echo "Synchronisation en cours... Blocs : $BLOCKS / $HEADERS"
+    sleep 30
+  fi
+done
+
+# Vérifier une dernière fois le nombre de blocs
+echo "🔍 Vérification finale du nombre de blocs :"
 nito-cli -conf="$NITO_DIR/nito.conf" getblockcount
 if [ $? -ne 0 ]; then
   echo "Erreur : Échec de la vérification RPC avec nito-cli. Vérifiez que le nœud est opérationnel et que les identifiants RPC sont corrects."
@@ -209,7 +231,7 @@ fi
 # Recharger .bashrc pour appliquer le PATH au shell courant
 source ~/.bashrc
 
-echo "🎉 Node NitoCoin opérationnel. Poursuite avec l'installation de l'explorateur..."
+echo "🎉 Node NitoCoin opérationnel et synchronisé. Poursuite avec l'installation de l'explorateur..."
 
 # Étape 10 : Configurer le pare-feu pour l'explorateur
 echo "Configuration du pare-feu pour l'explorateur..."
@@ -484,16 +506,32 @@ pm2 save
 # Étape 21 : Synchronisation initiale et configuration du cron
 echo "Synchronisation initiale de l'explorateur..."
 cd "$EXPLORER_DIR"
-"$NPM_PATH" run sync-blocks
+# Exécuter la synchronisation avec des logs pour le diagnostic
+"$NPM_PATH" run sync-blocks > "$EXPLORER_DIR/sync-initial.log" 2>&1
 # Vérifier que la synchronisation initiale a réussi
 if [ $? -ne 0 ]; then
-  echo "Erreur : Échec de la synchronisation initiale. Vérifiez les logs de l'explorateur et assurez-vous que le nœud NitoCoin est opérationnel."
+  echo "Erreur : Échec de la synchronisation initiale. Consultez les logs dans $EXPLORER_DIR/sync-initial.log pour plus de détails."
   exit 1
 fi
 
-# Configurer le cron pour synchroniser toutes les minutes
+# Créer un script shell pour la synchronisation
+cat <<EOF > "$EXPLORER_DIR/sync-explorer.sh"
+#!/bin/bash
+# Charger l'environnement NVM
+export NVM_DIR="/root/.nvm"
+[ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"
+# Aller dans le répertoire de l'explorateur
+cd $EXPLORER_DIR
+# Exécuter la synchronisation
+$NPM_PATH run sync-blocks >> $EXPLORER_DIR/sync-cron.log 2>&1
+EOF
+
+# Rendre le script exécutable
+chmod +x "$EXPLORER_DIR/sync-explorer.sh"
+
+# Configurer le cron pour appeler le script toutes les minutes
 echo "Configuration du cron pour synchronisation automatique toutes les minutes..."
-echo "*/1 * * * * cd $EXPLORER_DIR && $NPM_PATH run sync-blocks > /dev/null 2>&1" | crontab -
+echo "*/1 * * * * /bin/bash $EXPLORER_DIR/sync-explorer.sh" | crontab -
 
 # Vérifier que le cron est bien configuré
 echo "Vérification de la configuration du cron..."
@@ -502,6 +540,31 @@ crontab -l
 # Nettoyer le dossier temporaire
 echo "Nettoyage du dossier temporaire $TEMP_DIR..."
 rm -rf "$TEMP_DIR"
+
+# Ajouter des diagnostics supplémentaires
+echo "🔍 Diagnostics supplémentaires :"
+echo "État du nœud NitoCoin :"
+nito-cli -conf="$NITO_DIR/nito.conf" getblockchaininfo
+echo "État de l'explorateur :"
+pm2 list
+echo "Logs de la synchronisation initiale :"
+tail -n 20 "$EXPLORER_DIR/sync-initial.log"
+echo "Attendre 3 minutes pour vérifier la synchronisation automatique via cron..."
+sleep 180
+echo "Logs du cron (dernières 20 lignes) :"
+if [ -f "$EXPLORER_DIR/sync-cron.log" ]; then
+  tail -n 20 "$EXPLORER_DIR/sync-cron.log"
+else
+  echo "Aucun log de cron trouvé. Vérifiez avec 'grep CRON /var/log/syslog'."
+fi
+echo "Test manuel de la synchronisation :"
+cd "$EXPLORER_DIR"
+"$NPM_PATH" run sync-blocks > "$EXPLORER_DIR/sync-manual.log" 2>&1
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec du test manuel de la synchronisation. Consultez les logs dans $EXPLORER_DIR/sync-manual.log pour plus de détails."
+else
+  echo "Test manuel de la synchronisation réussi. Consultez les logs dans $EXPLORER_DIR/sync-manual.log pour plus de détails."
+fi
 
 echo "🎉 Installation complète terminée !"
 echo "Node NitoCoin et l'explorateur eIquidus sont opérationnels."
