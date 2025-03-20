@@ -1,15 +1,12 @@
-```markdown
-# NitoNode-Explorer
-
 ## Présentation
 
-**NitoNode-Explorer** est un script d'auto-installation conçu pour déployer un nœud complet [NitoCoin](https://github.com/NitoNetwork/Nito-core) et un explorateur de blockchain [eIquidus](https://github.com/team-exor/eiquidus) sur un serveur Linux (Ubuntu recommandé). Ce script automatise l'installation, la configuration, et la synchronisation des deux composants, te permettant d'avoir un nœud opérationnel et un explorateur web accessible en quelques étapes simples.
+**NitoNode-Explorer** est un script d'auto-installation conçu pour déployer un nœud complet NitoCoin (https://github.com/NitoNetwork/Nito-core) et un explorateur de blockchain eIquidus (https://github.com/team-exor/eiquidus) sur un serveur Linux (Ubuntu recommandé). Ce script automatise l'installation, la configuration, et la synchronisation des deux composants, te permettant d'avoir un nœud opérationnel et un explorateur web accessible en quelques étapes simples.
 
 ### Fonctionnalités
 - Installation automatique du nœud NitoCoin (version 2.0.1).
 - Installation et configuration de l'explorateur eIquidus avec une interface personnalisée pour NitoCoin.
 - Synchronisation automatique de la blockchain pour le nœud et l'explorateur.
-- Configuration d'un certificat SSL via [Certbot](https://certbot.eff.org/) pour sécuriser l'accès à l'explorateur.
+- Configuration d'un certificat SSL via Certbot (https://certbot.eff.org/) pour sécuriser l'accès à l'explorateur.
 - Personnalisation avec des images spécifiques (logo, favicons, etc.) pour l'explorateur.
 
 ## Prérequis
@@ -24,8 +21,8 @@ Avant de commencer, assure-toi d'avoir :
 
 L'installation est entièrement automatisée. Suis ces étapes pour installer le nœud NitoCoin et l'explorateur eIquidus :
 
-1. **Télécharger le script d'installation** :  
-   Exécute la commande suivante pour télécharger le script depuis [GitHub](https://github.com/biigbang0001/NitoNode-Explorer) :  
+1. **Télécharger la commande d'installation** :  
+   Exécute la commande suivante pour télécharger le script depuis GitHub (https://github.com/biigbang0001/NitoNode-Explorer) :  
    ```bash
    wget https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/install_nito_node_explorer.sh
    ```
@@ -49,10 +46,10 @@ L'installation est entièrement automatisée. Suis ces étapes pour installer le
    - Installation des dépendances nécessaires (Node.js, Docker, Nginx, etc.).
    - Téléchargement et configuration du nœud NitoCoin (version 2.0.1).
    - Démarrage du nœud et début de la synchronisation de la blockchain.
-   - Installation de l'explorateur eIquidus avec [MongoDB](https://www.mongodb.com/) pour la base de données.
-   - Configuration de [Nginx](https://nginx.org/) comme reverse proxy avec un certificat SSL via [Certbot](https://certbot.eff.org/).
+   - Installation de l'explorateur eIquidus avec MongoDB (https://www.mongodb.com/) pour la base de données.
+   - Configuration de Nginx (https://nginx.org/) comme reverse proxy avec un certificat SSL via Certbot (https://certbot.eff.org/).
    - Téléchargement des images personnalisées (logo, favicons, etc.) depuis le dépôt GitHub.
-   - Lancement de l'explorateur avec [PM2](https://pm2.keymetrics.io/) et synchronisation automatique de la blockchain.
+   - Lancement de l'explorateur avec PM2 (https://pm2.keymetrics.io/) et synchronisation automatique de la blockchain.
 
 4. **Attendre la fin de l'installation** :
    - L'installation prend environ 10 à 20 minutes, selon la vitesse de ton serveur et de ta connexion Internet.
@@ -70,7 +67,7 @@ Une fois l'installation terminée, le nœud NitoCoin et l'explorateur eIquidus s
   Exemple : `https://nito-explorer.nitopool.fr`
 
 ### Commandes pour gérer le nœud NitoCoin
-Le nœud NitoCoin est géré via [systemd](https://systemd.io/). Voici les commandes utiles :
+Le nœud NitoCoin est géré via systemd (https://systemd.io/). Voici les commandes utiles :
 
 - Vérifier le statut du nœud :  
   ```bash
@@ -98,7 +95,7 @@ Le nœud NitoCoin est géré via [systemd](https://systemd.io/). Voici les comma
   ```
 
 ### Commandes pour gérer l'explorateur eIquidus
-L'explorateur eIquidus est géré via [PM2](https://pm2.keymetrics.io/), et la base de données utilise [MongoDB](https://www.mongodb.com/) dans un conteneur Docker. Voici les commandes utiles :
+L'explorateur eIquidus est géré via PM2 (https://pm2.keymetrics.io/), et la base de données utilise MongoDB (https://www.mongodb.com/) dans un conteneur Docker. Voici les commandes utiles :
 
 - Vérifier le statut de l'explorateur :  
   ```bash
@@ -178,7 +175,7 @@ Pour des raisons de sécurité, il est **fortement recommandé** de changer les 
 ### 3. Conseils supplémentaires
 - Utilise des mots de passe longs et complexes (au moins 16 caractères, avec lettres, chiffres, et symboles).
 - Garde une sauvegarde de tes nouveaux identifiants dans un endroit sécurisé.
-- Vérifie que le pare-feu ([UFW](https://help.ubuntu.com/community/UFW)) est bien configuré :  
+- Vérifie que le pare-feu UFW (https://help.ubuntu.com/community/UFW) est bien configuré :  
   ```bash
   ufw status
   ```
@@ -189,7 +186,7 @@ Pour des raisons de sécurité, il est **fortement recommandé** de changer les 
 Si tu rencontres des problèmes, voici quelques étapes pour diagnostiquer et résoudre les erreurs :
 
 - **Si l'explorateur ne se charge pas** :
-  - Vérifie que [Nginx](https://nginx.org/) est en cours d'exécution :  
+  - Vérifie que Nginx (https://nginx.org/) est en cours d'exécution :  
     ```bash
     systemctl status nginx
     ```
@@ -197,7 +194,7 @@ Si tu rencontres des problèmes, voici quelques étapes pour diagnostiquer et r�
     ```bash
     pm2 logs explorer
     ```
-  - Vérifie que [MongoDB](https://www.mongodb.com/) est en cours d'exécution :  
+  - Vérifie que MongoDB (https://www.mongodb.com/) est en cours d'exécution :  
     ```bash
     docker ps
     ```
@@ -233,3 +230,4 @@ Si tu rencontres des problèmes, voici quelques étapes pour diagnostiquer et r�
     ```bash
     systemctl restart nginx
     ```
+
