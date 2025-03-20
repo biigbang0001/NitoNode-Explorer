@@ -16,7 +16,6 @@ Avant de commencer, assure-toi d'avoir :
 - Accès root sur le serveur.
 - Une connexion Internet stable.
 - Un nom de domaine configuré pour pointer vers l'adresse IP de ton serveur (nécessaire pour l'explorateur).
-- Les ports nécessaires ouverts sur ton serveur (SSH, 8820 pour le nœud, 80/443 pour l'explorateur, 27017 pour MongoDB, 8825 pour RPC).
 
 ## Installation
 
