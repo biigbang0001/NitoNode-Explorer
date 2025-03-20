@@ -216,12 +216,16 @@ cp /root/NitoNode-Explorer/page-title-img.png /root/explorer/public/img/
 cp /root/NitoNode-Explorer/external.png /root/explorer/public/img/
 cp /root/NitoNode-Explorer/coingecko.png /root/explorer/public/img/
 
-# Copier settings.json dans explorer/ et modifier les identifiants
+# Copier settings.json dans explorer/ et modifier les identifiants et les chemins SSL
 cp /root/NitoNode-Explorer/settings.json /root/explorer/
-# Modifier settings.json pour insérer les identifiants personnalisés
+# Modifier settings.json pour insérer les identifiants personnalisés et le port RPC
 sed -i "s/\"username\": \"user\"/\"username\": \"$RPC_USER\"/" /root/explorer/settings.json
 sed -i "s/\"password\": \"pass\"/\"password\": \"$RPC_PASSWORD\"/" /root/explorer/settings.json
 sed -i "s/\"port\": 8825/\"port\": $RPC_PORT/" /root/explorer/settings.json
+# Modifier les chemins SSL pour correspondre au domaine saisi
+sed -i "s|/etc/letsencrypt/live/nito-explorer.nitopool.fr/cert.pem|/etc/letsencrypt/live/$DOMAIN/cert.pem|" /root/explorer/settings.json
+sed -i "s|/etc/letsencrypt/live/nito-explorer.nitopool.fr/chain.pem|/etc/letsencrypt/live/$DOMAIN/chain.pem|" /root/explorer/settings.json
+sed -i "s|/etc/letsencrypt/live/nito-explorer.nitopool.fr/privkey.pem|/etc/letsencrypt/live/$DOMAIN/privkey.pem|" /root/explorer/settings.json
 
 # Étape 16 : Installer Certbot et générer le certificat via Nginx
 echo "Installation de Certbot..."
