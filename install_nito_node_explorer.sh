@@ -9,7 +9,7 @@ fi
 # Étape 1 : Demander les informations
 echo "Entrez le nom de domaine pour l’explorateur (ex. : nito-explorer.nitopool.fr) :"
 read DOMAIN
-echo "Entrez le port RPC de votre portefeuille (ex. : 8825 pour Nito) :"
+echo "Entrez le port RPC du node Nito (ex. : 8825 pour Nito) :"
 read RPC_PORT
 echo "Entrez le nom d'utilisateur RPC pour le nœud Nito (ex. : user) :"
 read RPC_USER
