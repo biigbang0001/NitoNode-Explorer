@@ -1,8 +1,9 @@
-# NitoNode+Explorer
+```markdown
+# NitoNode-Explorer
 
 ## Présentation
 
-**NitoNode+Explorer** est un script d'auto-installation conçu pour déployer un nœud complet [NitoCoin](https://github.com/NitoNetwork/Nito-core) et un explorateur de blockchain [eIquidus](https://github.com/team-exor/eiquidus) sur un serveur Linux (Ubuntu recommandé). Ce script automatise l'installation, la configuration, et la synchronisation des deux composants, te permettant d'avoir un nœud opérationnel et un explorateur web accessible en quelques étapes simples.
+**NitoNode-Explorer** est un script d'auto-installation conçu pour déployer un nœud complet [NitoCoin](https://github.com/NitoNetwork/Nito-core) et un explorateur de blockchain [eIquidus](https://github.com/team-exor/eiquidus) sur un serveur Linux (Ubuntu recommandé). Ce script automatise l'installation, la configuration, et la synchronisation des deux composants, te permettant d'avoir un nœud opérationnel et un explorateur web accessible en quelques étapes simples.
 
 ### Fonctionnalités
 - Installation automatique du nœud NitoCoin (version 2.0.1).
@@ -24,9 +25,9 @@ Avant de commencer, assure-toi d'avoir :
 L'installation est entièrement automatisée. Suis ces étapes pour installer le nœud NitoCoin et l'explorateur eIquidus :
 
 1. **Télécharger le script d'installation** :  
-   Exécute la commande suivante pour télécharger le script depuis [GitHub](https://github.com/biigbang0001/NitoNode+Explorer) :  
+   Exécute la commande suivante pour télécharger le script depuis [GitHub](https://github.com/biigbang0001/NitoNode-Explorer) :  
    ```bash
-   wget https://raw.githubusercontent.com/biigbang0001/NitoNode+Explorer/main/install_nito_node_explorer.sh
+   wget https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/install_nito_node_explorer.sh
    ```
 
 2. **Rendre le script exécutable** :  
@@ -232,4 +233,3 @@ Si tu rencontres des problèmes, voici quelques étapes pour diagnostiquer et r�
     ```bash
     systemctl restart nginx
     ```
-
