@@ -9,7 +9,7 @@ fi
 # Étape 1 : Demander les informations
 echo "Entrez le nom de domaine pour l’explorateur (ex. : nito-explorer.nitopool.fr) :"
 read DOMAIN
-echo "Entrez le port RPC de votre portefeuille (ex. : 8825 pour Nito) :"
+echo "Entrez le port RPC du node Nito (ex. : 8825 pour Nito) :"
 read RPC_PORT
 echo "Entrez le nom d'utilisateur RPC pour le nœud Nito (ex. : user) :"
 read RPC_USER
@@ -33,6 +33,13 @@ TEMP_DIR="$INSTALL_DIR/NitoNode-Explorer"
 # Étape 2 : Créer le dossier temporaire pour les téléchargements
 echo "Création du dossier temporaire dans $TEMP_DIR..."
 mkdir -p "$TEMP_DIR"
+
+# S'assurer que le répertoire d'installation a les bonnes permissions (seulement si nouvellement créé)
+if [ ! -d "$INSTALL_DIR" ]; then
+  mkdir -p "$INSTALL_DIR"
+  chown root:root "$INSTALL_DIR"
+  chmod 755 "$INSTALL_DIR"
+fi
 
 # Étape 3 : Mise à jour et installation des dépendances nécessaires
 echo "Mise à jour du système et installation des dépendances..."
@@ -152,12 +159,15 @@ ufw --force enable
 # Étape 11 : Installer Node.js avec NVM (version 16.20.2 pour compatibilité)
 echo "Installation de Node.js 16.20.2 via NVM..."
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-export NVM_DIR="$HOME/.nvm"
+export NVM_DIR="/root/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 nvm install 16.20.2
 nvm use 16.20.2
 node -v
 npm -v
+
+# Définir le chemin de npm dynamiquement
+NPM_PATH="/root/.nvm/versions/node/v16.20.2/bin/npm"
 
 # Étape 12 : Installer Docker
 echo "Installation de Docker..."
@@ -211,7 +221,7 @@ systemctl enable nginx
 echo "Téléchargement d’eIquidus dans $EXPLORER_DIR..."
 git clone https://github.com/team-exor/eiquidus "$EXPLORER_DIR"
 cd "$EXPLORER_DIR"
-npm install --only=prod
+"$NPM_PATH" install --only=prod
 
 # Étape 16 : Télécharger et intégrer les images Nito et settings.json
 echo "Téléchargement des images Nito et settings.json..."
@@ -272,6 +282,11 @@ nginx -t && systemctl restart nginx
 
 echo "Génération du certificat SSL..."
 certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email admin@"$DOMAIN"
+# Vérifier que le certificat a été généré
+if [ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+  echo "Erreur : Échec de la génération du certificat SSL. Vérifiez la configuration de votre domaine et les logs de Certbot (/var/log/letsencrypt/letsencrypt.log)."
+  exit 1
+fi
 
 # Étape 18 : Configurer Nginx avec SSL
 echo "Configuration finale de Nginx avec SSL..."
@@ -304,16 +319,16 @@ nginx -t && systemctl restart nginx
 
 # Étape 19 : Installer et lancer avec PM2
 echo "Installation de PM2 et démarrage..."
-npm install -g pm2
+"$NPM_PATH" install -g pm2
 # Vérifier que PM2 est bien installé
 if ! command -v pm2 &> /dev/null; then
   echo "Erreur : PM2 n'a pas pu être installé correctement. Tentative de réinstallation..."
-  npm install -g pm2 --force
+  "$NPM_PATH" install -g pm2 --force
 fi
 # Ajouter le chemin de PM2 au PATH si nécessaire
 if ! command -v pm2 &> /dev/null; then
   export PATH="$PATH:/root/.nvm/versions/node/v16.20.2/bin"
-  echo 'export PATH="$PATH:/root/.nvm/versions/node/v16.20.2/bin"' >> ~/.bashrc
+  echo "export PATH=\"\$PATH:/root/.nvm/versions/node/v16.20.2/bin\"" >> ~/.bashrc
   source ~/.bashrc
 fi
 # Vérifier une dernière fois
@@ -322,7 +337,7 @@ if ! command -v pm2 &> /dev/null; then
   exit 1
 fi
 cd "$EXPLORER_DIR"
-npm run start-pm2
+"$NPM_PATH" run start-pm2
 
 # Étape 20 : Configurer PM2 pour redémarrer automatiquement au boot
 echo "Configuration de PM2 pour redémarrage automatique..."
@@ -332,15 +347,24 @@ pm2 save
 # Étape 21 : Synchronisation initiale et configuration du cron
 echo "Synchronisation initiale de l'explorateur..."
 cd "$EXPLORER_DIR"
-npm run sync-blocks
+"$NPM_PATH" run sync-blocks
+# Vérifier que la synchronisation initiale a réussi
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec de la synchronisation initiale. Vérifiez les logs de l'explorateur et assurez-vous que le nœud NitoCoin est opérationnel."
+  exit 1
+fi
 
 # Configurer le cron pour synchroniser toutes les minutes
 echo "Configuration du cron pour synchronisation automatique toutes les minutes..."
-echo "*/1 * * * * cd $EXPLORER_DIR && /root/.nvm/versions/node/v16.20.2/bin/npm run sync-blocks > /dev/null 2>&1" | crontab -
+echo "*/1 * * * * cd $EXPLORER_DIR && $NPM_PATH run sync-blocks > /dev/null 2>&1" | crontab -
 
 # Vérifier que le cron est bien configuré
 echo "Vérification de la configuration du cron..."
 crontab -l
+
+# Nettoyer le dossier temporaire
+echo "Nettoyage du dossier temporaire $TEMP_DIR..."
+rm -rf "$TEMP_DIR"
 
 echo "🎉 Installation complète terminée !"
 echo "Node NitoCoin et l'explorateur eIquidus sont opérationnels."
