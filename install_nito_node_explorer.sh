@@ -9,52 +9,75 @@ fi
 # Étape 1 : Demander les informations
 echo "Entrez le nom de domaine pour l’explorateur (ex. : nito-explorer.nitopool.fr) :"
 read DOMAIN
-echo "Entrez le port RPC du node Nito (ex. : 8825 pour Nito) :"
+echo "Entrez le port RPC de votre portefeuille (ex. : 8825 pour Nito) :"
 read RPC_PORT
 echo "Entrez le nom d'utilisateur RPC pour le nœud Nito (ex. : user) :"
 read RPC_USER
 echo "Entrez le mot de passe RPC pour le nœud Nito (ex. : pass) :"
 read RPC_PASSWORD
+echo "Entrez le répertoire où installer l'explorateur (ex. : /root ou /var/www, appuyez sur Entrée pour utiliser /root par défaut) :"
+read INSTALL_DIR
+# Si l'utilisateur n'entre rien, utiliser /root par défaut
+if [ -z "$INSTALL_DIR" ]; then
+  INSTALL_DIR="/root"
+fi
+# S'assurer que le répertoire se termine sans "/"
+INSTALL_DIR=$(echo "$INSTALL_DIR" | sed 's:/*$::')
 
-# Étape 2 : Créer le dossier NitoNode-Explorer localement
-echo "Création du dossier NitoNode-Explorer..."
-mkdir -p /root/NitoNode-Explorer
+# Définir les chemins dynamiques
+NITO_DIR="$INSTALL_DIR/.nito"
+NITO_NODE_DIR="$INSTALL_DIR/nito-node"
+EXPLORER_DIR="$INSTALL_DIR/explorer"
+TEMP_DIR="$INSTALL_DIR/NitoNode-Explorer"
+
+# Étape 2 : Créer le dossier temporaire pour les téléchargements
+echo "Création du dossier temporaire dans $TEMP_DIR..."
+mkdir -p "$TEMP_DIR"
 
 # Étape 3 : Mise à jour et installation des dépendances nécessaires
 echo "Mise à jour du système et installation des dépendances..."
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y curl cmake git build-essential libtool autotools-dev automake pkg-config bsdmainutils python3 software-properties-common ufw net-tools jq unzip libzmq3-dev libminiupnpc-dev libssl-dev libevent-dev wget
 
-# Étape 4 : Téléchargement et installation du Node NitoCoin
+# Étape 4 : Installer une version de base de Node.js et npm pour NVM
+echo "Installation d'une version de base de Node.js et npm pour NVM..."
+sudo apt install -y nodejs npm
+# Vérifier que npm est bien installé
+if ! command -v npm &> /dev/null; then
+  echo "Erreur : npm n'a pas pu être installé. Vérifiez votre connexion Internet et les dépôts apt."
+  exit 1
+fi
+
+# Étape 5 : Téléchargement et installation du Node NitoCoin
 echo "🚀 Installation du Node NitoCoin démarrée..."
-cd /root
+cd "$INSTALL_DIR"
 wget https://github.com/NitoNetwork/Nito-core/releases/download/v2.0.1/nito-2-0-1-x86_64-linux-gnu.tar.gz
 tar -xzvf nito-2-0-1-x86_64-linux-gnu.tar.gz
 rm nito-2-0-1-x86_64-linux-gnu.tar.gz
 mv nito-*/ nito-node
 
 # Ajouter les binaires au PATH globalement via /etc/environment
-if ! grep -q "/root/nito-node/bin" /etc/environment; then
-    echo 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/nito-node/bin"' | sudo tee /etc/environment > /dev/null
+if ! grep -q "$NITO_NODE_DIR/bin" /etc/environment; then
+    echo "PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$NITO_NODE_DIR/bin\"" | sudo tee /etc/environment > /dev/null
 fi
 
-# Ajouter le PATH à /root/.bashrc pour les sessions shell de root
-if ! grep -q "/root/nito-node/bin" /root/.bashrc; then
-    echo 'export PATH="$PATH:/root/nito-node/bin"' | sudo tee -a /root/.bashrc > /dev/null
+# Ajouter le PATH à ~/.bashrc pour les sessions shell de root
+if ! grep -q "$NITO_NODE_DIR/bin" ~/.bashrc; then
+    echo "export PATH=\"\$PATH:$NITO_NODE_DIR/bin\"" | sudo tee -a ~/.bashrc > /dev/null
 fi
 
 # Appliquer le PATH immédiatement dans ce script
-export PATH="$PATH:/root/nito-node/bin"
+export PATH="$PATH:$NITO_NODE_DIR/bin"
 
-# Étape 5 : Configuration du fichier nito.conf avec les identifiants personnalisés
-mkdir -p /root/.nito
-cat <<EOF > /root/.nito/nito.conf
+# Étape 6 : Configuration du fichier nito.conf avec les identifiants personnalisés
+mkdir -p "$NITO_DIR"
+cat <<EOF > "$NITO_DIR/nito.conf"
 maxconnections=300
 server=1
 daemon=1
 txindex=1
 prune=0
-datadir=/root/.nito
+datadir=$NITO_DIR
 port=8820
 rpcuser=$RPC_USER
 rpcpassword=$RPC_PASSWORD
@@ -69,9 +92,9 @@ bind=0.0.0.0
 EOF
 
 # Supprimer conflit potentiel
-rm -f /root/nito-node/nito.conf
+rm -f "$NITO_NODE_DIR/nito.conf"
 
-# Étape 6 : Configuration du service systemd NitoCoin
+# Étape 7 : Configuration du service systemd NitoCoin
 cat <<EOF > /etc/systemd/system/nitocoin.service
 [Unit]
 Description=NitoCoin Node
@@ -81,8 +104,8 @@ After=network.target
 User=root
 Group=root
 Type=forking
-ExecStart=/root/nito-node/bin/nitod -daemon -conf=/root/.nito/nito.conf
-ExecStop=/root/nito-node/bin/nito-cli stop
+ExecStart=$NITO_NODE_DIR/bin/nitod -daemon -conf=$NITO_DIR/nito.conf
+ExecStop=$NITO_NODE_DIR/bin/nito-cli stop
 Restart=on-failure
 RestartSec=15
 StartLimitIntervalSec=120
@@ -98,12 +121,12 @@ sudo systemctl daemon-reload
 sudo systemctl enable nitocoin
 sudo systemctl start nitocoin
 
-# Étape 7 : Configuration du firewall UFW pour le nœud
+# Étape 8 : Configuration du firewall UFW pour le nœud
 echo "Configuration du firewall pour le nœud Nito..."
 sudo ufw allow 8820/tcp   # Port réseau P2P
 sudo ufw allow ssh        # SSH pour sécurité
 
-# Étape 8 : Vérifications du nœud avant de continuer
+# Étape 9 : Vérifications du nœud avant de continuer
 echo "⏳ Attente démarrage node (20 sec)..."
 sleep 20
 
@@ -114,11 +137,11 @@ echo "🔍 Vérification RPC avec nito-cli :"
 nito-cli getblockcount
 
 # Recharger .bashrc pour appliquer le PATH au shell courant
-source /root/.bashrc
+source ~/.bashrc
 
 echo "🎉 Node NitoCoin opérationnel. Poursuite avec l'installation de l'explorateur..."
 
-# Étape 9 : Configurer le pare-feu pour l'explorateur
+# Étape 10 : Configurer le pare-feu pour l'explorateur
 echo "Configuration du pare-feu pour l'explorateur..."
 ufw allow 80    # Temporaire pour Certbot
 ufw allow 443   # HTTPS
@@ -126,8 +149,8 @@ ufw allow 27017 # MongoDB (Docker)
 ufw allow "$RPC_PORT" # Port RPC
 ufw --force enable
 
-# Étape 10 : Installer Node.js avec NVM (version 16.20.2 pour compatibilité)
-echo "Installation de Node.js 16.20.2..."
+# Étape 11 : Installer Node.js avec NVM (version 16.20.2 pour compatibilité)
+echo "Installation de Node.js 16.20.2 via NVM..."
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
@@ -136,7 +159,7 @@ nvm use 16.20.2
 node -v
 npm -v
 
-# Étape 11 : Installer Docker
+# Étape 12 : Installer Docker
 echo "Installation de Docker..."
 apt install -y docker.io
 systemctl start docker
@@ -148,7 +171,7 @@ if ! docker --version; then
   exit 1
 fi
 
-# Étape 12 : Lancer MongoDB 7.0.2 en conteneur Docker avec redémarrage automatique
+# Étape 13 : Lancer MongoDB 7.0.2 en conteneur Docker avec redémarrage automatique
 echo "Lancement de MongoDB 7.0.2 via Docker..."
 docker pull mongo:7.0.2
 mkdir -p /data/db /var/log/mongodb
@@ -178,57 +201,57 @@ db.createUser({ user: "eiquidus", pwd: "Nd^p2d77ceBX!L", roles: ["readWrite"] })
 exit
 EOF
 
-# Étape 13 : Installer Nginx
+# Étape 14 : Installer Nginx
 echo "Installation de Nginx..."
 apt install nginx -y
 systemctl start nginx
 systemctl enable nginx
 
-# Étape 14 : Installer eIquidus
-echo "Téléchargement d’eIquidus..."
-git clone https://github.com/team-exor/eiquidus /root/explorer
-cd /root/explorer
+# Étape 15 : Installer eIquidus
+echo "Téléchargement d’eIquidus dans $EXPLORER_DIR..."
+git clone https://github.com/team-exor/eiquidus "$EXPLORER_DIR"
+cd "$EXPLORER_DIR"
 npm install --only=prod
 
-# Étape 15 : Télécharger et intégrer les images Nito et settings.json
+# Étape 16 : Télécharger et intégrer les images Nito et settings.json
 echo "Téléchargement des images Nito et settings.json..."
-mkdir -p /root/explorer/public/img
-wget -O /root/NitoNode-Explorer/settings.json "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/settings.json"
-wget -O /root/NitoNode-Explorer/logo.png "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/logo.png"
-wget -O /root/NitoNode-Explorer/header-logo.png "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/header-logo.png"
-wget -O /root/NitoNode-Explorer/page-title-img.png "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/page-title-img.png"
-wget -O /root/NitoNode-Explorer/favicon-32.png "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/favicon-32.png"
-wget -O /root/NitoNode-Explorer/favicon-128.png "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/favicon-128.png"
-wget -O /root/NitoNode-Explorer/favicon-180.png "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/favicon-180.png"
-wget -O /root/NitoNode-Explorer/favicon-192.png "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/favicon-192.png"
-wget -O /root/NitoNode-Explorer/external.png "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/external.png"
-wget -O /root/NitoNode-Explorer/coingecko.png "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/coingecko.png"
+mkdir -p "$EXPLORER_DIR/public/img"
+wget -O "$TEMP_DIR/settings.json" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/settings.json"
+wget -O "$TEMP_DIR/logo.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/logo.png"
+wget -O "$TEMP_DIR/header-logo.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/header-logo.png"
+wget -O "$TEMP_DIR/page-title-img.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/page-title-img.png"
+wget -O "$TEMP_DIR/favicon-32.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/favicon-32.png"
+wget -O "$TEMP_DIR/favicon-128.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/favicon-128.png"
+wget -O "$TEMP_DIR/favicon-180.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/favicon-180.png"
+wget -O "$TEMP_DIR/favicon-192.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/favicon-192.png"
+wget -O "$TEMP_DIR/external.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/external.png"
+wget -O "$TEMP_DIR/coingecko.png" "https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/coingecko.png"
 
 # Copier les images dans les bons dossiers
 # Favicons dans explorer/public/
-cp /root/NitoNode-Explorer/favicon-32.png /root/explorer/public/
-cp /root/NitoNode-Explorer/favicon-128.png /root/explorer/public/
-cp /root/NitoNode-Explorer/favicon-180.png /root/explorer/public/
-cp /root/NitoNode-Explorer/favicon-192.png /root/explorer/public/
+cp "$TEMP_DIR/favicon-32.png" "$EXPLORER_DIR/public/"
+cp "$TEMP_DIR/favicon-128.png" "$EXPLORER_DIR/public/"
+cp "$TEMP_DIR/favicon-180.png" "$EXPLORER_DIR/public/"
+cp "$TEMP_DIR/favicon-192.png" "$EXPLORER_DIR/public/"
 # Autres images dans explorer/public/img/
-cp /root/NitoNode-Explorer/logo.png /root/explorer/public/img/
-cp /root/NitoNode-Explorer/header-logo.png /root/explorer/public/img/
-cp /root/NitoNode-Explorer/page-title-img.png /root/explorer/public/img/
-cp /root/NitoNode-Explorer/external.png /root/explorer/public/img/
-cp /root/NitoNode-Explorer/coingecko.png /root/explorer/public/img/
+cp "$TEMP_DIR/logo.png" "$EXPLORER_DIR/public/img/"
+cp "$TEMP_DIR/header-logo.png" "$EXPLORER_DIR/public/img/"
+cp "$TEMP_DIR/page-title-img.png" "$EXPLORER_DIR/public/img/"
+cp "$TEMP_DIR/external.png" "$EXPLORER_DIR/public/img/"
+cp "$TEMP_DIR/coingecko.png" "$EXPLORER_DIR/public/img/"
 
 # Copier settings.json dans explorer/ et modifier les identifiants et les chemins SSL
-cp /root/NitoNode-Explorer/settings.json /root/explorer/
+cp "$TEMP_DIR/settings.json" "$EXPLORER_DIR/"
 # Modifier settings.json pour insérer les identifiants personnalisés et le port RPC
-sed -i "s/\"username\": \"user\"/\"username\": \"$RPC_USER\"/" /root/explorer/settings.json
-sed -i "s/\"password\": \"pass\"/\"password\": \"$RPC_PASSWORD\"/" /root/explorer/settings.json
-sed -i "s/\"port\": 8825/\"port\": $RPC_PORT/" /root/explorer/settings.json
+sed -i "s/\"username\": \"user\"/\"username\": \"$RPC_USER\"/" "$EXPLORER_DIR/settings.json"
+sed -i "s/\"password\": \"pass\"/\"password\": \"$RPC_PASSWORD\"/" "$EXPLORER_DIR/settings.json"
+sed -i "s/\"port\": 8825/\"port\": $RPC_PORT/" "$EXPLORER_DIR/settings.json"
 # Modifier les chemins SSL pour correspondre au domaine saisi
-sed -i "s|/etc/letsencrypt/live/nito-explorer.nitopool.fr/cert.pem|/etc/letsencrypt/live/$DOMAIN/cert.pem|" /root/explorer/settings.json
-sed -i "s|/etc/letsencrypt/live/nito-explorer.nitopool.fr/chain.pem|/etc/letsencrypt/live/$DOMAIN/chain.pem|" /root/explorer/settings.json
-sed -i "s|/etc/letsencrypt/live/nito-explorer.nitopool.fr/privkey.pem|/etc/letsencrypt/live/$DOMAIN/privkey.pem|" /root/explorer/settings.json
+sed -i "s|/etc/letsencrypt/live/nito-explorer.nitopool.fr/cert.pem|/etc/letsencrypt/live/$DOMAIN/cert.pem|" "$EXPLORER_DIR/settings.json"
+sed -i "s|/etc/letsencrypt/live/nito-explorer.nitopool.fr/chain.pem|/etc/letsencrypt/live/$DOMAIN/chain.pem|" "$EXPLORER_DIR/settings.json"
+sed -i "s|/etc/letsencrypt/live/nito-explorer.nitopool.fr/privkey.pem|/etc/letsencrypt/live/$DOMAIN/privkey.pem|" "$EXPLORER_DIR/settings.json"
 
-# Étape 16 : Installer Certbot et générer le certificat via Nginx
+# Étape 17 : Installer Certbot et générer le certificat via Nginx
 echo "Installation de Certbot..."
 apt install snapd -y
 snap install core; snap refresh core
@@ -250,7 +273,7 @@ nginx -t && systemctl restart nginx
 echo "Génération du certificat SSL..."
 certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email admin@"$DOMAIN"
 
-# Étape 17 : Configurer Nginx avec SSL
+# Étape 18 : Configurer Nginx avec SSL
 echo "Configuration finale de Nginx avec SSL..."
 cat > /etc/nginx/sites-available/eiquidus <<EOF
 server {
@@ -279,7 +302,7 @@ ln -s /etc/nginx/sites-available/eiquidus /etc/nginx/sites-enabled/
 rm /etc/nginx/sites-enabled/default
 nginx -t && systemctl restart nginx
 
-# Étape 18 : Installer et lancer avec PM2
+# Étape 19 : Installer et lancer avec PM2
 echo "Installation de PM2 et démarrage..."
 npm install -g pm2
 # Vérifier que PM2 est bien installé
@@ -298,22 +321,22 @@ if ! command -v pm2 &> /dev/null; then
   echo "Erreur : PM2 n'est toujours pas accessible. Vérifiez l'installation de Node.js et npm."
   exit 1
 fi
-cd /root/explorer
+cd "$EXPLORER_DIR"
 npm run start-pm2
 
-# Étape 19 : Configurer PM2 pour redémarrer automatiquement au boot
+# Étape 20 : Configurer PM2 pour redémarrer automatiquement au boot
 echo "Configuration de PM2 pour redémarrage automatique..."
 pm2 startup systemd -u root
 pm2 save
 
-# Étape 20 : Synchronisation initiale et configuration du cron
+# Étape 21 : Synchronisation initiale et configuration du cron
 echo "Synchronisation initiale de l'explorateur..."
-cd /root/explorer
+cd "$EXPLORER_DIR"
 npm run sync-blocks
 
 # Configurer le cron pour synchroniser toutes les minutes
 echo "Configuration du cron pour synchronisation automatique toutes les minutes..."
-echo "*/1 * * * * cd /root/explorer && /root/.nvm/versions/node/v16.20.2/bin/npm run sync-blocks > /dev/null 2>&1" | crontab -
+echo "*/1 * * * * cd $EXPLORER_DIR && /root/.nvm/versions/node/v16.20.2/bin/npm run sync-blocks > /dev/null 2>&1" | crontab -
 
 # Vérifier que le cron est bien configuré
 echo "Vérification de la configuration du cron..."
@@ -327,3 +350,4 @@ echo " - Port P2P : 8820"
 echo " - Port RPC : $RPC_PORT"
 echo " - Username : $RPC_USER"
 echo " - Password : $RPC_PASSWORD"
+echo " - Répertoire d'installation : $INSTALL_DIR"
