@@ -187,9 +187,3 @@ Si tu rencontres des problèmes, voici quelques étapes pour diagnostiquer et r�
     systemctl restart nginx
     ```
 
-- **Si le favicon ne s'affiche pas correctement** :
-  - Vide le cache de ton navigateur ou ouvre l'explorateur en mode de navigation privée.
-  - Vérifie que les fichiers `favicon-32.png`, `favicon-128.png`, `favicon-180.png`, et `favicon-192.png` sont bien présents dans `/root/explorer/public/` :  
-    ```bash
-    ls /root/explorer/public/
-    ```
