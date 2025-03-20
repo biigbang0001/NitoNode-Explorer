@@ -8,6 +8,7 @@
 - Synchronisation automatique de la blockchain pour le nœud et l'explorateur.
 - Configuration d'un certificat SSL via Certbot (https://certbot.eff.org/) pour sécuriser l'accès à l'explorateur.
 - Personnalisation avec des images spécifiques (logo, favicons, etc.) pour l'explorateur.
+- Configuration sécurisée des identifiants RPC (nom d'utilisateur et mot de passe) définis par l'utilisateur au début de l'installation.
 
 ## Prérequis
 Avant de commencer, assure-toi d'avoir :
@@ -38,22 +39,27 @@ L'installation est entièrement automatisée. Suis ces étapes pour installer le
    ```bash
    ./install_nito_node_explorer.sh
    ```
-   - Le script te posera deux questions :
+   - Le script te posera quatre questions :
      - **Nom de domaine** : Entre le domaine de ton explorateur (ex. : `nito-explorer.nitopool.fr`).
      - **Port RPC** : Entre le port RPC de ton nœud Nito (par défaut : `8825`).
+     - **Nom d'utilisateur RPC** : Entre un nom d'utilisateur pour l'accès RPC (ex. : `user`).
+     - **Mot de passe RPC** : Entre un mot de passe sécurisé pour l'accès RPC (ex. : `pass`).
 
    Le script effectuera les actions suivantes automatiquement :
    - Installation des dépendances nécessaires (Node.js, Docker, Nginx, etc.).
-   - Téléchargement et configuration du nœud NitoCoin (version 2.0.1).
+   - Téléchargement et configuration du nœud NitoCoin (version 2.0.1) avec les identifiants choisis.
    - Démarrage du nœud et début de la synchronisation de la blockchain.
    - Installation de l'explorateur eIquidus avec MongoDB (https://www.mongodb.com/) pour la base de données.
    - Configuration de Nginx (https://nginx.org/) comme reverse proxy avec un certificat SSL via Certbot (https://certbot.eff.org/).
    - Téléchargement des images personnalisées (logo, favicons, etc.) depuis le dépôt GitHub.
+   - Placement des favicons (`favicon-32.png`, `favicon-128.png`, `favicon-180.png`, `favicon-192.png`) dans `explorer/public/`.
+   - Placement des autres images (`logo.png`, `header-logo.png`, `page-title-img.png`, `external.png`, `coingecko.png`) dans `explorer/public/img/`.
+   - Téléchargement et configuration de `settings.json` avec les identifiants choisis.
    - Lancement de l'explorateur avec PM2 (https://pm2.keymetrics.io/) et synchronisation automatique de la blockchain.
 
 4. **Attendre la fin de l'installation** :
    - L'installation prend environ 10 à 20 minutes, selon la vitesse de ton serveur et de ta connexion Internet.
-   - À la fin, un message s'affichera avec l'URL de ton explorateur (ex. : `https://nito-explorer.nitopool.fr`).
+   - À la fin, un message s'affichera avec l'URL de ton explorateur (ex. : `https://nito-explorer.nitopool.fr`) et les identifiants que tu as choisis.
 
 ## Utilisation
 
@@ -65,6 +71,8 @@ Une fois l'installation terminée, le nœud NitoCoin et l'explorateur eIquidus s
   https://<ton-domaine>
   ```
   Exemple : `https://nito-explorer.nitopool.fr`
+
+- **Note sur le favicon** : Si l'icône de la fenêtre (favicon) ne s'affiche pas correctement, vide le cache de ton navigateur ou ouvre l'explorateur en mode de navigation privée.
 
 ### Commandes pour gérer le nœud NitoCoin
 Le nœud NitoCoin est géré via systemd (https://systemd.io/). Voici les commandes utiles :
@@ -132,55 +140,6 @@ L'explorateur eIquidus est géré via PM2 (https://pm2.keymetrics.io/), et la ba
   systemctl restart nginx
   ```
 
-## Sécurité post-installation
-
-Pour des raisons de sécurité, il est **fortement recommandé** de changer les identifiants par défaut (`user` et `pass`) utilisés pour le nœud Nito et l'explorateur eIquidus. Voici comment procéder :
-
-### 1. Changer les identifiants du nœud Nito
-- Édite le fichier de configuration du nœud :  
-  ```bash
-  nano /root/.nito/nito.conf
-  ```
-- Modifie les lignes suivantes avec un nouveau `rpcuser` et `rpcpassword` sécurisés :  
-  ```
-  rpcuser=ton-nouveau-user
-  rpcpassword=ton-nouveau-mot-de-passe
-  ```
-- Sauvegarde (`Ctrl + X`, `Y`, `Entrée`).
-- Redémarre le nœud pour appliquer les changements :  
-  ```bash
-  systemctl restart nitocoin
-  ```
-
-### 2. Changer les identifiants dans l'explorateur eIquidus
-- Édite le fichier de configuration de l'explorateur :  
-  ```bash
-  nano /root/explorer/settings.json
-  ```
-- Modifie les identifiants dans la section `wallet` pour qu'ils correspondent à ceux du nœud :  
-  ```json
-  "wallet": {
-    "host": "127.0.0.1",
-    "port": 8825,
-    "username": "ton-nouveau-user",
-    "password": "ton-nouveau-mot-de-passe"
-  }
-  ```
-- Sauvegarde (`Ctrl + X`, `Y`, `Entrée`).
-- Redémarre l'explorateur pour appliquer les changements :  
-  ```bash
-  pm2 restart explorer
-  ```
-
-### 3. Conseils supplémentaires
-- Utilise des mots de passe longs et complexes (au moins 16 caractères, avec lettres, chiffres, et symboles).
-- Garde une sauvegarde de tes nouveaux identifiants dans un endroit sécurisé.
-- Vérifie que le pare-feu UFW (https://help.ubuntu.com/community/UFW) est bien configuré :  
-  ```bash
-  ufw status
-  ```
-  Assure-toi que seuls les ports nécessaires sont ouverts (SSH, 8820, 80, 443, 27017, 8825).
-
 ## Dépannage
 
 Si tu rencontres des problèmes, voici quelques étapes pour diagnostiquer et résoudre les erreurs :
@@ -231,3 +190,9 @@ Si tu rencontres des problèmes, voici quelques étapes pour diagnostiquer et r�
     systemctl restart nginx
     ```
 
+- **Si le favicon ne s'affiche pas correctement** :
+  - Vide le cache de ton navigateur ou ouvre l'explorateur en mode de navigation privée.
+  - Vérifie que les fichiers `favicon-32.png`, `favicon-128.png`, `favicon-180.png`, et `favicon-192.png` sont bien présents dans `/root/explorer/public/` :  
+    ```bash
+    ls /root/explorer/public/
+    ```
