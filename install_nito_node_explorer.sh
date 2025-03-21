@@ -510,15 +510,15 @@ pm2 startup systemd -u root
 pm2 save
 
 # Étape 21 : Synchronisation initiale et configuration du cron
-echo "Synchronisation initiale de l'explorateur..."
+echo "Synchronisation initiale de l'explorateur (en arrière-plan)..."
 cd "$EXPLORER_DIR"
-# Exécuter la synchronisation avec des logs pour le diagnostic
-"$NPM_PATH" run sync-blocks > "$EXPLORER_DIR/sync-initial.log" 2>&1
-# Vérifier que la synchronisation initiale a réussi
-if [ $? -ne 0 ]; then
-  echo "Erreur : Échec de la synchronisation initiale. Consultez les logs dans $EXPLORER_DIR/sync-initial.log pour plus de détails."
-  exit 1
-fi
+# Exécuter la synchronisation en arrière-plan avec des logs pour le diagnostic
+"$NPM_PATH" run sync-blocks > "$EXPLORER_DIR/sync-initial.log" 2>&1 &
+# Récupérer le PID du processus pour pouvoir vérifier son état plus tard
+SYNC_PID=$!
+# Afficher un message informatif
+echo "La synchronisation initiale a été lancée en arrière-plan. Vous pouvez vérifier l'état de la synchronisation en accédant à : https://$DOMAIN"
+echo "Pour suivre l'avancement, consultez les logs avec : tail -f $EXPLORER_DIR/sync-initial.log"
 
 # Créer un script shell pour la synchronisation
 cat <<EOF > "$EXPLORER_DIR/sync-explorer.sh"
@@ -553,8 +553,12 @@ echo "État du nœud NitoCoin :"
 nito-cli -conf="$NITO_DIR/nito.conf" getblockchaininfo
 echo "État de l'explorateur :"
 pm2 list
-echo "Logs de la synchronisation initiale :"
-tail -n 20 "$EXPLORER_DIR/sync-initial.log"
+echo "Logs de la synchronisation initiale (dernières 20 lignes) :"
+if [ -f "$EXPLORER_DIR/sync-initial.log" ]; then
+  tail -n 20 "$EXPLORER_DIR/sync-initial.log"
+else
+  echo "Aucun log de synchronisation initiale trouvé. Vérifiez avec 'tail -f $EXPLORER_DIR/sync-initial.log'."
+fi
 echo "Attendre 3 minutes pour vérifier la synchronisation automatique via cron..."
 sleep 180
 echo "Logs du cron (dernières 20 lignes) :"
