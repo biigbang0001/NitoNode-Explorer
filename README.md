@@ -18,7 +18,7 @@ Avant de commencer, assure-toi d'avoir :
 - Accès root sur le serveur.
 - Une connexion Internet stable.
 - Un nom de domaine configuré pour pointer vers l'adresse IP de ton serveur (nécessaire pour l'explorateur).
-- Les ports nécessaires (SSH, 8820 pour le nœud, 80/443 pour l'explorateur, 27017 pour MongoDB, et le port RPC choisi, par défaut 8825) doivent être accessibles. Le script ouvrira automatiquement ces ports via UFW.
+- Les ports nécessaires (8820 pour le nœud, 80/443 pour l'explorateur doivent être accessibles. Le script ouvrira automatiquement ces ports via UFW.
 
 ## Installation
 
