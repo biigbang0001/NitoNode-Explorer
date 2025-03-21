@@ -14,7 +14,7 @@
 
 ## Prérequis
 Avant de commencer, assure-toi d'avoir :
-- Un serveur Linux (Ubuntu 20.04 ou 22.04 recommandé).
+- Un serveur Linux (Ubuntu 22.04 recommandé).
 - Accès root sur le serveur.
 - Une connexion Internet stable.
 - Un nom de domaine configuré pour pointer vers l'adresse IP de ton serveur (nécessaire pour l'explorateur).
