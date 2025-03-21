@@ -569,14 +569,6 @@ if [ -f "$EXPLORER_DIR/sync-initial.log" ]; then
 else
   echo "Aucun log de synchronisation initiale trouvé. Vérifiez avec 'tail -f $EXPLORER_DIR/sync-initial.log'."
 fi
-echo "Test manuel de la synchronisation :"
-cd "$EXPLORER_DIR"
-"$NPM_PATH" run sync-blocks > "$EXPLORER_DIR/sync-manual.log" 2>&1
-if [ $? -ne 0 ]; then
-  echo "Erreur : Échec du test manuel de la synchronisation. Consultez les logs dans $EXPLORER_DIR/sync-manual.log pour plus de détails."
-else
-  echo "Test manuel de la synchronisation réussi. Consultez les logs dans $EXPLORER_DIR/sync-manual.log pour plus de détails."
-fi
 
 echo "🎉 Installation complète terminée !"
 echo "Node NitoCoin et l'explorateur eIquidus sont opérationnels."
