@@ -537,7 +537,6 @@ chmod +x "$EXPLORER_DIR/sync-explorer.sh"
 
 # Configurer le cron pour appeler le script toutes les minutes
 echo "Configuration du cron pour synchronisation automatique toutes les minutes..."
-echo "Note : Le cron peut échouer avec 'Sync aborted' si la synchronisation initiale est encore en cours. Il commencera à fonctionner une fois la synchronisation initiale terminée."
 echo "*/1 * * * * /bin/bash $EXPLORER_DIR/sync-explorer.sh" | crontab -
 
 # Vérifier que le cron est bien configuré
@@ -570,14 +569,6 @@ if [ -f "$EXPLORER_DIR/sync-initial.log" ]; then
 else
   echo "Aucun log de synchronisation initiale trouvé. Vérifiez avec 'tail -f $EXPLORER_DIR/sync-initial.log'."
 fi
-echo "Attendre 3 minutes pour vérifier la synchronisation automatique via cron..."
-sleep 180
-echo "Logs du cron (dernières 20 lignes) :"
-if [ -f "$EXPLORER_DIR/sync-cron.log" ]; then
-  tail -n 20 "$EXPLORER_DIR/sync-cron.log"
-else
-  echo "Aucun log de cron trouvé. Vérifiez avec 'grep CRON /var/log/syslog'."
-fi
 echo "Test manuel de la synchronisation :"
 cd "$EXPLORER_DIR"
 "$NPM_PATH" run sync-blocks > "$EXPLORER_DIR/sync-manual.log" 2>&1
@@ -597,4 +588,3 @@ echo " - Username : $RPC_USER"
 echo " - Password : $RPC_PASSWORD"
 echo " - Répertoire d'installation : $INSTALL_DIR"
 echo "Pour vérifier les logs du cron, utilisez : grep CRON /var/log/syslog"
-echo "Note : Si le cron échoue avec 'Sync aborted', assurez-vous que la synchronisation initiale est terminée (vérifiez via https://$DOMAIN ou les logs)."
