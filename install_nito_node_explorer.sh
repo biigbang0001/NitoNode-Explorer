@@ -15,11 +15,11 @@ echo "Entrez le nom d'utilisateur RPC pour le nœud Nito (ex. : user) :"
 read RPC_USER
 echo "Entrez le mot de passe RPC pour le nœud Nito (ex. : pass) :"
 read RPC_PASSWORD
-echo "Entrez le répertoire où installer l'explorateur (ex. : /root ou /var/www, appuyez sur Entrée pour utiliser /root par défaut) :"
+echo "Entrez le répertoire où installer le nœud et l'explorateur (ex. : /var/www pour installer dans /var/www/nito-node et /var/www/explorer, appuyez sur Entrée pour utiliser /var/www par défaut) :"
 read INSTALL_DIR
-# Si l'utilisateur n'entre rien, utiliser /root par défaut
+# Si l'utilisateur n'entre rien, utiliser /var/www par défaut
 if [ -z "$INSTALL_DIR" ]; then
-  INSTALL_DIR="/root"
+  INSTALL_DIR="/var/www"
 fi
 # S'assurer que le répertoire se termine sans "/"
 INSTALL_DIR=$(echo "$INSTALL_DIR" | sed 's:/*$::')
@@ -51,6 +51,10 @@ TEMP_DIR="$INSTALL_DIR/NitoNode-Explorer"
 # Étape 2 : Créer le dossier temporaire pour les téléchargements
 echo "Création du dossier temporaire dans $TEMP_DIR..."
 mkdir -p "$TEMP_DIR"
+if [ ! -d "$TEMP_DIR" ]; then
+  echo "Erreur : Impossible de créer le dossier temporaire $TEMP_DIR."
+  exit 1
+fi
 
 # S'assurer que le répertoire d'installation a les bonnes permissions (seulement si nouvellement créé)
 if [ ! -d "$INSTALL_DIR" ]; then
@@ -155,7 +159,7 @@ EOF
 # Supprimer conflit potentiel
 rm -f "$NITO_NODE_DIR/nito.conf"
 
-# Étape 7 : Configuration du service systemd NitoCoin (basé sur ton script initial, sans modification des clés)
+# Étape 7 : Configuration du service systemd NitoCoin (basé sur ton script initial)
 cat <<EOF > /etc/systemd/system/nitocoin.service
 [Unit]
 Description=NitoCoin Node
@@ -235,10 +239,8 @@ echo "🎉 Node NitoCoin opérationnel et synchronisé. Poursuite avec l'install
 
 # Étape 10 : Configurer le pare-feu pour l'explorateur
 echo "Configuration du pare-feu pour l'explorateur..."
-ufw allow 80    # Temporaire pour Certbot
+ufw allow 80    # Pour Certbot et laissé ouvert comme demandé
 ufw allow 443   # HTTPS
-ufw allow 27017 # MongoDB (Docker)
-ufw allow "$RPC_PORT" # Port RPC
 ufw --force enable
 
 # Étape 11 : Installer Node.js avec NVM (version 16.20.2 pour compatibilité)
@@ -331,6 +333,10 @@ if [ $? -ne 0 ]; then
 fi
 cd "$EXPLORER_DIR"
 "$NPM_PATH" install --only=prod
+if [ $? -ne 0 ]; then
+  echo "Erreur : Échec de l'installation des dépendances d'eIquidus. Vérifiez votre connexion Internet et les logs npm."
+  exit 1
+fi
 
 # Étape 16 : Télécharger et intégrer les images Nito et settings.json
 echo "Téléchargement des images Nito et settings.json..."
