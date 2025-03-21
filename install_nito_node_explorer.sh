@@ -537,6 +537,7 @@ chmod +x "$EXPLORER_DIR/sync-explorer.sh"
 
 # Configurer le cron pour appeler le script toutes les minutes
 echo "Configuration du cron pour synchronisation automatique toutes les minutes..."
+echo "Note : Le cron peut échouer avec 'Sync aborted' si la synchronisation initiale est encore en cours. Il commencera à fonctionner une fois la synchronisation initiale terminée."
 echo "*/1 * * * * /bin/bash $EXPLORER_DIR/sync-explorer.sh" | crontab -
 
 # Vérifier que le cron est bien configuré
@@ -546,6 +547,16 @@ crontab -l
 # Nettoyer le dossier temporaire
 echo "Nettoyage du dossier temporaire $TEMP_DIR..."
 rm -rf "$TEMP_DIR"
+
+# Vérifier que les répertoires principaux existent
+echo "Vérification des répertoires d'installation..."
+if [ -d "$NITO_NODE_DIR" ] && [ -d "$EXPLORER_DIR" ] && [ -d "$NITO_DIR" ]; then
+  echo "Les répertoires d'installation sont corrects :"
+  ls -ld "$NITO_NODE_DIR" "$EXPLORER_DIR" "$NITO_DIR"
+else
+  echo "Erreur : Certains répertoires d'installation sont manquants. Vérifiez $NITO_NODE_DIR, $EXPLORER_DIR, et $NITO_DIR."
+  exit 1
+fi
 
 # Ajouter des diagnostics supplémentaires
 echo "🔍 Diagnostics supplémentaires :"
@@ -586,3 +597,4 @@ echo " - Username : $RPC_USER"
 echo " - Password : $RPC_PASSWORD"
 echo " - Répertoire d'installation : $INSTALL_DIR"
 echo "Pour vérifier les logs du cron, utilisez : grep CRON /var/log/syslog"
+echo "Note : Si le cron échoue avec 'Sync aborted', assurez-vous que la synchronisation initiale est terminée (vérifiez via https://$DOMAIN ou les logs)."
