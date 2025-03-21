@@ -78,7 +78,7 @@ if ! touch "$EXPLORER_DIR/.test_write" 2>/dev/null; then
 fi
 rm -f "$EXPLORER_DIR/.test_write"
 
-# Étape 3 : Mise à jour et installation des dépendances nécessaires
+# Étape 3 : Mise à jour et installation des dépendances nécessaires (basé sur ton script initial)
 echo "Mise à jour du système et installation des dépendances..."
 sudo apt update
 if [ $? -ne 0 ]; then
@@ -101,7 +101,7 @@ if ! command -v npm &> /dev/null; then
   exit 1
 fi
 
-# Étape 5 : Téléchargement et installation du Node NitoCoin
+# Étape 5 : Téléchargement et installation du Node NitoCoin (basé sur ton script initial)
 echo "🚀 Installation du Node NitoCoin démarrée..."
 cd "$INSTALL_DIR"
 wget https://github.com/NitoNetwork/Nito-core/releases/download/v2.0.1/nito-2-0-1-x86_64-linux-gnu.tar.gz
@@ -130,7 +130,7 @@ fi
 # Appliquer le PATH immédiatement dans ce script
 export PATH="$PATH:$NITO_NODE_DIR/bin"
 
-# Étape 6 : Configuration du fichier nito.conf avec les identifiants personnalisés
+# Étape 6 : Configuration du fichier nito.conf avec les identifiants personnalisés (basé sur ton script initial)
 mkdir -p "$NITO_DIR"
 cat <<EOF > "$NITO_DIR/nito.conf"
 maxconnections=300
@@ -155,7 +155,7 @@ EOF
 # Supprimer conflit potentiel
 rm -f "$NITO_NODE_DIR/nito.conf"
 
-# Étape 7 : Configuration du service systemd NitoCoin
+# Étape 7 : Configuration du service systemd NitoCoin (basé sur ton script initial, sans modification des clés)
 cat <<EOF > /etc/systemd/system/nitocoin.service
 [Unit]
 Description=NitoCoin Node
@@ -187,12 +187,12 @@ if ! sudo systemctl status nitocoin | grep -q "active (running)"; then
   exit 1
 fi
 
-# Étape 8 : Configuration du firewall UFW pour le nœud
+# Étape 8 : Configuration du firewall UFW pour le nœud (basé sur ton script initial)
 echo "Configuration du firewall pour le nœud Nito..."
 sudo ufw allow 8820/tcp   # Port réseau P2P
 sudo ufw allow ssh        # SSH pour sécurité
 
-# Étape 9 : Attendre que le nœud soit complètement synchronisé
+# Étape 9 : Attendre que le nœud soit complètement synchronisé (basé sur ton script initial, avec ajout de vérification)
 echo "⏳ Attente que le nœud NitoCoin soit complètement synchronisé..."
 sleep 20
 
