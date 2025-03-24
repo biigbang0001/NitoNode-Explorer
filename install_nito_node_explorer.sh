@@ -15,9 +15,8 @@ echo "Entrez le nom d'utilisateur RPC pour le nœud Nito (ex. : user) :"
 read RPC_USER
 echo "Entrez le mot de passe RPC pour le nœud Nito (ex. : pass) :"
 read RPC_PASSWORD
-echo "Entrez le répertoire où installer le nœud et l'explorateur (ex. : /var/www pour installer dans /var/www/nito-node et /var/www/explorer, appuyez sur Entrée pour utiliser /var/www par défaut) :"
+echo "Entrez le répertoire où installer le nœud et l'explorateur (ex. : /var/www pour installer dans /var/www/nito-node et /var/www/explorer) :"
 read INSTALL_DIR
-# Si l'utilisateur n'entre rien, utiliser /var/www par défaut
 if [ -z "$INSTALL_DIR" ]; then
   INSTALL_DIR="/var/www"
 fi
@@ -56,7 +55,7 @@ if [ ! -d "$TEMP_DIR" ]; then
   exit 1
 fi
 
-# S'assurer que le répertoire d'installation a les bonnes permissions (seulement si nouvellement créé)
+# S'assurer que le répertoire d'installation a les bonnes permissions 
 if [ ! -d "$INSTALL_DIR" ]; then
   mkdir -p "$INSTALL_DIR"
   chown root:root "$INSTALL_DIR"
@@ -82,7 +81,7 @@ if ! touch "$EXPLORER_DIR/.test_write" 2>/dev/null; then
 fi
 rm -f "$EXPLORER_DIR/.test_write"
 
-# Étape 3 : Mise à jour et installation des dépendances nécessaires (basé sur ton script initial)
+# Étape 3 : Mise à jour et installation des dépendances nécessaires 
 echo "Mise à jour du système et installation des dépendances..."
 sudo apt update
 if [ $? -ne 0 ]; then
@@ -105,7 +104,7 @@ if ! command -v npm &> /dev/null; then
   exit 1
 fi
 
-# Étape 5 : Téléchargement et installation du Node NitoCoin (basé sur ton script initial)
+# Étape 5 : Téléchargement et installation du Node NitoCoin 
 echo "🚀 Installation du Node NitoCoin démarrée..."
 cd "$INSTALL_DIR"
 wget https://github.com/NitoNetwork/Nito-core/releases/download/v2.0.1/nito-2-0-1-x86_64-linux-gnu.tar.gz
@@ -159,7 +158,7 @@ EOF
 # Supprimer conflit potentiel
 rm -f "$NITO_NODE_DIR/nito.conf"
 
-# Étape 7 : Configuration du service systemd NitoCoin (basé sur ton script initial)
+# Étape 7 : Configuration du service systemd NitoCoin 
 cat <<EOF > /etc/systemd/system/nitocoin.service
 [Unit]
 Description=NitoCoin Node
@@ -196,9 +195,9 @@ echo "Configuration du firewall pour le nœud Nito..."
 sudo ufw allow 8820/tcp   # Port réseau P2P
 sudo ufw allow ssh        # SSH pour sécurité
 
-# Étape 9 : Attendre que le nœud soit complètement synchronisé (basé sur ton script initial, avec ajout de vérification)
+# Étape 9 : Attendre que le nœud soit complètement synchronisé
 echo "⏳ Attente que le nœud NitoCoin soit complètement synchronisé..."
-sleep 20
+sleep 25
 
 # Vérifier l'état de la synchronisation avec getblockchaininfo
 while true; do
@@ -220,7 +219,7 @@ while true; do
     break
   else
     echo "Synchronisation en cours... Blocs : $BLOCKS / $HEADERS"
-    sleep 30
+    sleep 5
   fi
 done
 
