@@ -31,8 +31,7 @@ Avant de commencer, assure-toi d'avoir :
      - **Répertoire d'installation** : Entre le répertoire où installer l'explorateur (ex. : `/var/www`, appuie sur Entrée pour utiliser `/root` par défaut).
 
    **Télécharger la commande d'installation** 
-        **Rendre le script exécutable**  
-           **Lancer l'installation**
+        
    Exécute la commande suivante pour télécharger le script depuis GitHub ([https://github.com/biigbang0001/NitoNode-Explorer](https://github.com/biigbang0001/NitoNode-Explorer)) :  
    ```bash
    wget https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/install_nito_node_explorer.sh
