@@ -7,7 +7,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Étape 1 : Demander les informations
-echo "Entrez le nom de domaine pour l’explorateur (ex. : nito-explorer.nitopool.fr) :"
+echo "Entrez le nom de domaine pour l’explorateur (ex. : nito-explorer.exemple.fr) :"
 read DOMAIN
 echo "Entrez le port RPC du nœud Nito (ex. : 8825 pour Nito) :"
 read RPC_PORT
