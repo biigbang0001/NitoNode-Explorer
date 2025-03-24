@@ -32,7 +32,7 @@ Avant de commencer, assure-toi d'avoir :
 
    **Télécharger la commande d'installation** 
         
-   Exécute la commande suivante pour télécharger le script depuis GitHub ([https://github.com/biigbang0001/NitoNode-Explorer](https://github.com/biigbang0001/NitoNode-Explorer)) :  
+   Exécute la commande suivante pour télécharger et executer le script depuis GitHub ([https://github.com/biigbang0001/NitoNode-Explorer](https://github.com/biigbang0001/NitoNode-Explorer)) :  
    ```bash
    wget https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/install_nito_node_explorer.sh
    chmod +x install_nito_node_explorer.sh
