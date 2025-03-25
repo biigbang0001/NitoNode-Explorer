@@ -6,6 +6,40 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# Vérification et installation de cron si nécessaire
+if ! command -v cron &> /dev/null; then
+  echo "Cron n'est pas installé. Installation en cours..."
+  apt update
+  if [ $? -ne 0 ]; then
+    echo "Erreur : Échec de la mise à jour des dépôts apt pour installer cron. Vérifiez votre connexion Internet."
+    exit 1
+  fi
+  apt install -y cron
+  if [ $? -ne 0 ]; then
+    echo "Erreur : Échec de l'installation de cron. Vérifiez votre connexion Internet et les dépôts apt."
+    exit 1
+  fi
+  systemctl enable cron
+  systemctl start cron
+  if ! systemctl status cron | grep -q "active (running)"; then
+    echo "Erreur : Échec du démarrage du service cron. Vérifiez avec 'systemctl status cron'."
+    exit 1
+  fi
+  echo "Cron installé et démarré avec succès."
+else
+  echo "Cron est déjà installé. Vérification de son état..."
+  if ! systemctl status cron | grep -q "active (running)"; then
+    echo "Cron est installé mais ne fonctionne pas. Tentative de démarrage..."
+    systemctl start cron
+    systemctl enable cron
+    if ! systemctl status cron | grep -q "active (running)"; then
+      echo "Erreur : Échec du démarrage du service cron. Vérifiez avec 'systemctl status cron'."
+      exit 1
+    fi
+  fi
+  echo "Cron est opérationnel."
+fi
+
 # Étape 1 : Demander les informations
 echo "Entrez le nom de domaine pour l’explorateur (ex. : nito-explorer.exemple.fr) :"
 read DOMAIN
