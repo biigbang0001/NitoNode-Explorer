@@ -680,6 +680,8 @@ fi
 
 # Diagnostics supplémentaires
 echo "🔍 Diagnostics supplémentaires :"
+echo "État du nœud NitoCoin :"
+curl -s --user "$RPC_USER:$RPC_PASSWORD" --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getblockchaininfo", "params": []}' -H 'content-type: text/plain;' http://127.0.0.1:"$RPC_PORT" 2>/dev/null
 echo "État de l'explorateur :"
 pm2 list
 echo "Logs de la synchronisation initiale (dernières 20 lignes) :"
@@ -697,4 +699,4 @@ echo " - Port RPC : $RPC_PORT"
 echo " - Username : $RPC_USER"
 echo " - Password : $RPC_PASSWORD"
 echo " - Répertoire d'installation : $INSTALL_DIR"
-echo "Pour vérifier les logs du cron, utilisez : grep CRON /var/log/syslog"
+echo "Pour vérifier les logs du cron, utilisez : journalctl -u cron"
