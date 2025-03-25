@@ -50,8 +50,8 @@ echo "1) Installer un nouveau nœud"
 echo "2) Utiliser un nœud local existant"
 read -p "Entrez votre choix (1 ou 2) : " NODE_CHOICE
 
-# Définir les chemins dynamiques (sera utilisé dans les deux cas)
-echo "Entrez le répertoire où installer l'explorateur (ex. : /var/www pour installer dans /var/www/explorer) :"
+# Définir les chemins dynamiques 
+echo "Entrez le répertoire d'instalation (ex. : /var/www pour installer dans /var/www/*) :"
 read INSTALL_DIR
 if [ -z "$INSTALL_DIR" ]; then
   INSTALL_DIR="/var/www"
