@@ -43,12 +43,69 @@ fi
 # Étape 1 : Demander les informations
 echo "Entrez le nom de domaine pour l’explorateur (ex. : nito-explorer.exemple.fr) :"
 read DOMAIN
-echo "Entrez le port RPC du nœud Nito (ex. : 8825 pour Nito) :"
-read RPC_PORT
-echo "Entrez le nom d'utilisateur RPC pour le nœud Nito (ex. : user) :"
-read RPC_USER
-echo "Entrez le mot de passe RPC pour le nœud Nito (ex. : pass) :"
-read RPC_PASSWORD
+
+# Installer dig si nécessaire (fourni par le paquet dnsutils)
+if ! command -v dig &> /dev/null; then
+  echo "Installation de dnsutils pour la vérification DNS..."
+  apt install -y dnsutils
+  if [ $? -ne 0 ]; then
+    echo "Erreur : Échec de l'installation de dnsutils. Vérifiez votre connexion Internet."
+    exit 1
+  fi
+fi
+
+# Installer curl si nécessaire pour les requêtes RPC
+if ! command -v curl &> /dev/null; then
+  echo "Installation de curl pour tester la connexion RPC..."
+  apt install -y curl
+  if [ $? -ne 0 ]; then
+    echo "Erreur : Échec de l'installation de curl. Vérifiez votre connexion Internet."
+    exit 1
+  fi
+fi
+
+# Obtenir l'IP publique de la machine
+echo "Récupération de l'IP publique de cette machine..."
+PUBLIC_IP=$(curl -s ifconfig.me)
+if [ -z "$PUBLIC_IP" ]; then
+  echo "Erreur : Impossible de récupérer l'IP publique de la machine. Vérifiez votre connexion Internet."
+  exit 1
+fi
+echo "IP publique de cette machine : $PUBLIC_IP"
+
+# Résoudre le domaine fourni
+echo "Résolution du domaine $DOMAIN..."
+DOMAIN_IPS=$(dig +short "$DOMAIN" A | grep -v '\.$')
+if [ -z "$DOMAIN_IPS" ]; then
+  echo "Erreur : Impossible de résoudre le domaine $DOMAIN. Vérifiez qu'il est correctement configuré dans votre DNS."
+  echo "L'IP publique de cette machine est $PUBLIC_IP. Assurez-vous que votre domaine pointe vers cette IP."
+  echo "Veuillez corriger votre configuration DNS et relancer le script, ou appuyez sur Ctrl+C pour quitter."
+  read -p "Appuyez sur Entrée pour quitter ou Ctrl+C pour annuler..."
+  exit 1
+fi
+
+# Vérifier si l'IP publique correspond à l'une des IPs résolues
+MATCH_FOUND=false
+for IP in $DOMAIN_IPS; do
+  if [ "$IP" = "$PUBLIC_IP" ]; then
+    MATCH_FOUND=true
+    break
+  fi
+done
+
+if [ "$MATCH_FOUND" = true ]; then
+  echo "✅ Le domaine $DOMAIN pointe bien vers l'IP publique de cette machine ($PUBLIC_IP)."
+else
+  echo "❌ Erreur : Le domaine $DOMAIN ne pointe pas vers l'IP publique de cette machine ($PUBLIC_IP)."
+  echo "Les IPs résolues pour $DOMAIN sont :"
+  echo "$DOMAIN_IPS"
+  echo "L'IP publique de cette machine est $PUBLIC_IP. Assurez-vous que votre domaine pointe vers cette IP."
+  echo "Veuillez corriger votre configuration DNS et relancer le script, ou appuyez sur Ctrl+C pour quitter."
+  read -p "Appuyez sur Entrée pour quitter ou Ctrl+C pour annuler..."
+  exit 1
+fi
+
+# Demander le répertoire d'installation
 echo "Entrez le répertoire où installer le nœud et l'explorateur (ex. : /var/www pour installer dans /var/www/nito-node et /var/www/explorer) :"
 read INSTALL_DIR
 if [ -z "$INSTALL_DIR" ]; then
@@ -65,15 +122,6 @@ if ! echo "$INSTALL_DIR" | grep -qE '^/[a-zA-Z0-9/_-]+$'; then
   echo "Erreur : Le répertoire d'installation contient des caractères non valides. Utilisez uniquement des lettres, chiffres, /, _, ou -."
   exit 1
 fi
-# Vérifier que les identifiants RPC ne contiennent pas de caractères spéciaux problématiques
-if echo "$RPC_USER" | grep -q "[[:space:]\"']"; then
-  echo "Erreur : Le nom d'utilisateur RPC ne doit pas contenir d'espaces, de guillemets ou d'apostrophes."
-  exit 1
-fi
-if echo "$RPC_PASSWORD" | grep -q "[[:space:]\"']"; then
-  echo "Erreur : Le mot de passe RPC ne doit pas contenir d'espaces, de guillemets ou d'apostrophes."
-  exit 1
-fi
 
 # Définir les chemins dynamiques
 NITO_DIR="$INSTALL_DIR/.nito"
@@ -81,95 +129,150 @@ NITO_NODE_DIR="$INSTALL_DIR/nito-node"
 EXPLORER_DIR="$INSTALL_DIR/explorer"
 TEMP_DIR="$INSTALL_DIR/NitoNode-Explorer"
 
-# Étape 2 : Créer le dossier temporaire pour les téléchargements
-echo "Création du dossier temporaire dans $TEMP_DIR..."
-mkdir -p "$TEMP_DIR"
-if [ ! -d "$TEMP_DIR" ]; then
-  echo "Erreur : Impossible de créer le dossier temporaire $TEMP_DIR."
-  exit 1
+# Recherche large de nito.conf
+echo "Recherche d'une configuration existante de NitoCoin (nito.conf)..."
+NITO_CONF=$(find /root /home "$INSTALL_DIR" -type f -name "nito.conf" 2>/dev/null | head -n 1)
+
+if [ -n "$NITO_CONF" ]; then
+  echo "Fichier nito.conf trouvé à : $NITO_CONF"
+  # Extraire les informations RPC
+  RPC_USER=$(grep "^rpcuser=" "$NITO_CONF" | sed 's/rpcuser=//' | head -n 1)
+  RPC_PASSWORD=$(grep "^rpcpassword=" "$NITO_CONF" | sed 's/rpcpassword=//' | head -n 1)
+  RPC_PORT=$(grep "^rpcport=" "$NITO_CONF" | sed 's/rpcport=//' | head -n 1)
+
+  # Vérifier que toutes les infos sont présentes
+  if [ -z "$RPC_USER" ] || [ -z "$RPC_PASSWORD" ] || [ -z "$RPC_PORT" ]; then
+    echo "Erreur : Le fichier $NITO_CONF ne contient pas toutes les informations RPC nécessaires (rpcuser, rpcpassword, rpcport)."
+    echo "Installation complète du nœud requise."
+  else
+    echo "Informations RPC extraites de $NITO_CONF :"
+    echo " - rpcuser: $RPC_USER"
+    echo " - rpcpassword: $RPC_PASSWORD"
+    echo " - rpcport: $RPC_PORT"
+
+    # Tester la connexion RPC avec curl (méthode JSON-RPC sans nito-cli)
+    echo "Test de la connexion RPC au nœud local (127.0.0.1:$RPC_PORT)..."
+    RPC_TEST=$(curl -s --user "$RPC_USER:$RPC_PASSWORD" --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getblockchaininfo", "params": []}' -H 'content-type: text/plain;' http://127.0.0.1:"$RPC_PORT" 2>/dev/null)
+    if echo "$RPC_TEST" | grep -q "result"; then
+      echo "✅ Connexion RPC réussie ! Un nœud NitoCoin est déjà opérationnel."
+      echo "Poursuite avec l'installation de l'explorateur uniquement..."
+      # Passer directement à l'étape 10
+    else
+      echo "❌ Échec de la connexion RPC au nœud local (127.0.0.1:$RPC_PORT). Le nœud est peut-être arrêté ou les identifiants sont incorrects."
+      echo "Installation complète du nœud requise."
+    fi
+  fi
 fi
 
-# S'assurer que le répertoire d'installation a les bonnes permissions 
-if [ ! -d "$INSTALL_DIR" ]; then
-  mkdir -p "$INSTALL_DIR"
-  chown root:root "$INSTALL_DIR"
-  chmod 755 "$INSTALL_DIR"
-fi
-# Vérifier que root peut écrire dans le répertoire
-if ! touch "$INSTALL_DIR/.test_write" 2>/dev/null; then
-  echo "Erreur : L'utilisateur root n'a pas les permissions d'écriture dans $INSTALL_DIR. Vérifiez les permissions du répertoire."
-  exit 1
-fi
-rm -f "$INSTALL_DIR/.test_write"
-# Vérifier que root peut écrire dans les sous-dossiers
-mkdir -p "$NITO_DIR" 2>/dev/null
-if ! touch "$NITO_DIR/.test_write" 2>/dev/null; then
-  echo "Erreur : L'utilisateur root n'a pas les permissions d'écriture dans $NITO_DIR. Vérifiez les permissions du répertoire."
-  exit 1
-fi
-rm -f "$NITO_DIR/.test_write"
-mkdir -p "$EXPLORER_DIR" 2>/dev/null
-if ! touch "$EXPLORER_DIR/.test_write" 2>/dev/null; then
-  echo "Erreur : L'utilisateur root n'a pas les permissions d'écriture dans $EXPLORER_DIR. Vérifiez les permissions du répertoire."
-  exit 1
-fi
-rm -f "$EXPLORER_DIR/.test_write"
+# Si pas de nito.conf valide ou échec de la connexion RPC, procéder à l'installation complète
+if [ -z "$NITO_CONF" ] || [ -z "$RPC_USER" ] || [ -z "$RPC_PASSWORD" ] || [ -z "$RPC_PORT" ] || ! echo "$RPC_TEST" | grep -q "result"; then
+  echo "Aucun nœud NitoCoin détecté ou connexion RPC échouée. Installation complète en cours..."
+  echo "Entrez le port RPC du nœud Nito (ex. : 8825 pour Nito) :"
+  read RPC_PORT
+  echo "Entrez le nom d'utilisateur RPC pour le nœud Nito (ex. : user) :"
+  read RPC_USER
+  echo "Entrez le mot de passe RPC pour le nœud Nito (ex. : pass) :"
+  read RPC_PASSWORD
 
-# Étape 3 : Mise à jour et installation des dépendances nécessaires 
-echo "Mise à jour du système et installation des dépendances..."
-sudo apt update
-if [ $? -ne 0 ]; then
-  echo "Erreur : Échec de la mise à jour des dépôts apt. Vérifiez votre connexion Internet."
-  exit 1
-fi
-sudo apt upgrade -y
-sudo apt install -y curl cmake git build-essential libtool autotools-dev automake pkg-config bsdmainutils python3 software-properties-common ufw net-tools jq unzip libzmq3-dev libminiupnpc-dev libssl-dev libevent-dev wget
-if [ $? -ne 0 ]; then
-  echo "Erreur : Échec de l'installation des dépendances. Vérifiez votre connexion Internet et les dépôts apt."
-  exit 1
-fi
+  # Vérifier que les identifiants RPC ne contiennent pas de caractères spéciaux problématiques
+  if echo "$RPC_USER" | grep -q "[[:space:]\"']"; then
+    echo "Erreur : Le nom d'utilisateur RPC ne doit pas contenir d'espaces, de guillemets ou d'apostrophes."
+    exit 1
+  fi
+  if echo "$RPC_PASSWORD" | grep -q "[[:space:]\"']"; then
+    echo "Erreur : Le mot de passe RPC ne doit pas contenir d'espaces, de guillemets ou d'apostrophes."
+    exit 1
+  fi
 
-# Étape 4 : Installer une version de base de Node.js et npm pour NVM
-echo "Installation d'une version de base de Node.js et npm pour NVM..."
-sudo apt install -y nodejs npm
-# Vérifier que npm est bien installé
-if ! command -v npm &> /dev/null; then
-  echo "Erreur : npm n'a pas pu être installé. Vérifiez votre connexion Internet et les dépôts apt."
-  exit 1
-fi
+  # Étape 2 : Créer le dossier temporaire pour les téléchargements
+  echo "Création du dossier temporaire dans $TEMP_DIR..."
+  mkdir -p "$TEMP_DIR"
+  if [ ! -d "$TEMP_DIR" ]; then
+    echo "Erreur : Impossible de créer le dossier temporaire $TEMP_DIR."
+    exit 1
+  fi
 
-# Étape 5 : Téléchargement et installation du Node NitoCoin 
-echo "🚀 Installation du Node NitoCoin démarrée..."
-cd "$INSTALL_DIR"
-wget https://github.com/NitoNetwork/Nito-core/releases/download/v2.0.1/nito-2-0-1-x86_64-linux-gnu.tar.gz
-if [ $? -ne 0 ] || [ ! -f "nito-2-0-1-x86_64-linux-gnu.tar.gz" ]; then
-  echo "Erreur : Échec du téléchargement de nito-2-0-1-x86_64-linux-gnu.tar.gz. Vérifiez votre connexion Internet."
-  exit 1
-fi
-tar -xzvf nito-2-0-1-x86_64-linux-gnu.tar.gz
-if [ $? -ne 0 ]; then
-  echo "Erreur : Échec de l'extraction de nito-2-0-1-x86_64-linux-gnu.tar.gz. Le fichier peut être corrompu."
-  exit 1
-fi
-rm nito-2-0-1-x86_64-linux-gnu.tar.gz
-mv nito-*/ nito-node
+  # S'assurer que le répertoire d'installation a les bonnes permissions 
+  if [ ! -d "$INSTALL_DIR" ]; then
+    mkdir -p "$INSTALL_DIR"
+    chown root:root "$INSTALL_DIR"
+    chmod 755 "$INSTALL_DIR"
+  fi
+  # Vérifier que root peut écrire dans le répertoire
+  if ! touch "$INSTALL_DIR/.test_write" 2>/dev/null; then
+    echo "Erreur : L'utilisateur root n'a pas les permissions d'écriture dans $INSTALL_DIR. Vérifiez les permissions du répertoire."
+    exit 1
+  fi
+  rm -f "$INSTALL_DIR/.test_write"
+  # Vérifier que root peut écrire dans les sous-dossiers
+  mkdir -p "$NITO_DIR" 2>/dev/null
+  if ! touch "$NITO_DIR/.test_write" 2>/dev/null; then
+    echo "Erreur : L'utilisateur root n'a pas les permissions d'écriture dans $NITO_DIR. Vérifiez les permissions du répertoire."
+    exit 1
+  fi
+  rm -f "$NITO_DIR/.test_write"
+  mkdir -p "$EXPLORER_DIR" 2>/dev/null
+  if ! touch "$EXPLORER_DIR/.test_write" 2>/dev/null; then
+    echo "Erreur : L'utilisateur root n'a pas les permissions d'écriture dans $EXPLORER_DIR. Vérifiez les permissions du répertoire."
+    exit 1
+  fi
+  rm -f "$EXPLORER_DIR/.test_write"
 
-# Ajouter les binaires au PATH globalement via /etc/environment
-if ! grep -q "$NITO_NODE_DIR/bin" /etc/environment; then
-    echo "PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$NITO_NODE_DIR/bin\"" | sudo tee /etc/environment > /dev/null
-fi
+  # Étape 3 : Mise à jour et installation des dépendances nécessaires 
+  echo "Mise à jour du système et installation des dépendances..."
+  sudo apt update
+  if [ $? -ne 0 ]; then
+    echo "Erreur : Échec de la mise à jour des dépôts apt. Vérifiez votre connexion Internet."
+    exit 1
+  fi
+  sudo apt upgrade -y
+  sudo apt install -y curl cmake git build-essential libtool autotools-dev automake pkg-config bsdmainutils python3 software-properties-common ufw net-tools jq unzip libzmq3-dev libminiupnpc-dev libssl-dev libevent-dev wget
+  if [ $? -ne 0 ]; then
+    echo "Erreur : Échec de l'installation des dépendances. Vérifiez votre connexion Internet et les dépôts apt."
+    exit 1
+  fi
 
-# Ajouter le PATH à ~/.bashrc pour les sessions shell de root
-if ! grep -q "$NITO_NODE_DIR/bin" ~/.bashrc; then
-    echo "export PATH=\"\$PATH:$NITO_NODE_DIR/bin\"" | sudo tee -a ~/.bashrc > /dev/null
-fi
+  # Étape 4 : Installer une version de base de Node.js et npm pour NVM
+  echo "Installation d'une version de base de Node.js et npm pour NVM..."
+  sudo apt install -y nodejs npm
+  # Vérifier que npm est bien installé
+  if ! command -v npm &> /dev/null; then
+    echo "Erreur : npm n'a pas pu être installé. Vérifiez votre connexion Internet et les dépôts apt."
+    exit 1
+  fi
 
-# Appliquer le PATH immédiatement dans ce script
-export PATH="$PATH:$NITO_NODE_DIR/bin"
+  # Étape 5 : Téléchargement et installation du Node NitoCoin 
+  echo "🚀 Installation du Node NitoCoin démarrée..."
+  cd "$INSTALL_DIR"
+  wget https://github.com/NitoNetwork/Nito-core/releases/download/v2.0.1/nito-2-0-1-x86_64-linux-gnu.tar.gz
+  if [ $? -ne 0 ] || [ ! -f "nito-2-0-1-x86_64-linux-gnu.tar.gz" ]; then
+    echo "Erreur : Échec du téléchargement de nito-2-0-1-x86_64-linux-gnu.tar.gz. Vérifiez votre connexion Internet."
+    exit 1
+  fi
+  tar -xzvf nito-2-0-1-x86_64-linux-gnu.tar.gz
+  if [ $? -ne 0 ]; then
+    echo "Erreur : Échec de l'extraction de nito-2-0-1-x86_64-linux-gnu.tar.gz. Le fichier peut être corrompu."
+    exit 1
+  fi
+  rm nito-2-0-1-x86_64-linux-gnu.tar.gz
+  mv nito-*/ nito-node
 
-# Étape 6 : Configuration du fichier nito.conf avec les identifiants personnalisés (basé sur ton script initial)
-mkdir -p "$NITO_DIR"
-cat <<EOF > "$NITO_DIR/nito.conf"
+  # Ajouter les binaires au PATH globalement via /etc/environment
+  if ! grep -q "$NITO_NODE_DIR/bin" /etc/environment; then
+      echo "PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$NITO_NODE_DIR/bin\"" | sudo tee /etc/environment > /dev/null
+  fi
+
+  # Ajouter le PATH à ~/.bashrc pour les sessions shell de root
+  if ! grep -q "$NITO_NODE_DIR/bin" ~/.bashrc; then
+      echo "export PATH=\"\$PATH:$NITO_NODE_DIR/bin\"" | sudo tee -a ~/.bashrc > /dev/null
+  fi
+
+  # Appliquer le PATH immédiatement dans ce script
+  export PATH="$PATH:$NITO_NODE_DIR/bin"
+
+  # Étape 6 : Configuration du fichier nito.conf avec les identifiants personnalisés
+  mkdir -p "$NITO_DIR"
+  cat <<EOF > "$NITO_DIR/nito.conf"
 maxconnections=300
 server=1
 daemon=1
@@ -189,11 +292,11 @@ proxy=
 bind=0.0.0.0
 EOF
 
-# Supprimer conflit potentiel
-rm -f "$NITO_NODE_DIR/nito.conf"
+  # Supprimer conflit potentiel
+  rm -f "$NITO_NODE_DIR/nito.conf"
 
-# Étape 7 : Configuration du service systemd NitoCoin 
-cat <<EOF > /etc/systemd/system/nitocoin.service
+  # Étape 7 : Configuration du service systemd NitoCoin 
+  cat <<EOF > /etc/systemd/system/nitocoin.service
 [Unit]
 Description=NitoCoin Node
 After=network.target
@@ -214,61 +317,63 @@ LimitNOFILE=1000000
 WantedBy=multi-user.target
 EOF
 
-# Activation du service systemd
-sudo systemctl daemon-reload
-sudo systemctl enable nitocoin
-sudo systemctl start nitocoin
-# Vérifier que le service a démarré correctement
-if ! sudo systemctl status nitocoin | grep -q "active (running)"; then
-  echo "Erreur : Échec du démarrage du service nitocoin. Vérifiez les logs avec 'journalctl -u nitocoin'."
-  exit 1
-fi
-
-# Étape 8 : Configuration du firewall UFW pour le nœud (basé sur ton script initial)
-echo "Configuration du firewall pour le nœud Nito..."
-sudo ufw allow 8820/tcp   # Port réseau P2P
-sudo ufw allow ssh        # SSH pour sécurité
-
-# Étape 9 : Attendre que le nœud soit complètement synchronisé
-echo "⏳ Attente que le nœud NitoCoin soit complètement synchronisé..."
-sleep 25
-
-# Vérifier l'état de la synchronisation avec getblockchaininfo
-while true; do
-  # Récupérer l'état de la synchronisation
-  BLOCKCHAIN_INFO=$(nito-cli -conf="$NITO_DIR/nito.conf" getblockchaininfo)
-  if [ $? -ne 0 ]; then
-    echo "Erreur : Impossible de récupérer l'état de la synchronisation du nœud. Vérifiez les logs avec 'journalctl -u nitocoin'."
+  # Activation du service systemd
+  sudo systemctl daemon-reload
+  sudo systemctl enable nitocoin
+  sudo systemctl start nitocoin
+  # Vérifier que le service a démarré correctement
+  if ! sudo systemctl status nitocoin | grep -q "active (running)"; then
+    echo "Erreur : Échec du démarrage du service nitocoin. Vérifiez les logs avec 'journalctl -u nitocoin'."
     exit 1
   fi
 
-  # Extraire le champ "initialblockdownload" et "blocks"
-  IBD=$(echo "$BLOCKCHAIN_INFO" | jq -r '.initialblockdownload')
-  BLOCKS=$(echo "$BLOCKCHAIN_INFO" | jq -r '.blocks')
-  HEADERS=$(echo "$BLOCKCHAIN_INFO" | jq -r '.headers')
+  # Étape 8 : Configuration du firewall UFW pour le nœud
+  echo "Configuration du firewall pour le nœud Nito..."
+  sudo ufw allow 8820/tcp   # Port réseau P2P
+  sudo ufw allow ssh        # SSH pour sécurité
 
-  # Vérifier si la synchronisation est terminée
-  if [ "$IBD" = "false" ] && [ "$BLOCKS" -eq "$HEADERS" ]; then
-    echo "🎉 Le nœud NitoCoin est complètement synchronisé ! Blocs : $BLOCKS"
-    break
-  else
-    echo "Synchronisation en cours... Blocs : $BLOCKS / $HEADERS"
-    sleep 5
+  # Étape 9 : Attendre que le nœud soit complètement synchronisé
+  echo "⏳ Attente que le nœud NitoCoin soit complètement synchronisé..."
+  sleep 25
+
+  # Vérifier l'état de la synchronisation avec getblockchaininfo
+  while true; do
+    # Récupérer l'état de la synchronisation via curl (JSON-RPC)
+    BLOCKCHAIN_INFO=$(curl -s --user "$RPC_USER:$RPC_PASSWORD" --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getblockchaininfo", "params": []}' -H 'content-type: text/plain;' http://127.0.0.1:"$RPC_PORT" 2>/dev/null)
+    if [ $? -ne 0 ] || [ -z "$BLOCKCHAIN_INFO" ]; then
+      echo "Erreur : Impossible de récupérer l'état de la synchronisation du nœud via RPC. Vérifiez que le nœud est en cours d'exécution."
+      exit 1
+    fi
+
+    # Extraire le champ "initialblockdownload" et "blocks" avec jq
+    IBD=$(echo "$BLOCKCHAIN_INFO" | jq -r '.result.initialblockdownload')
+    BLOCKS=$(echo "$BLOCKCHAIN_INFO" | jq -r '.result.blocks')
+    HEADERS=$(echo "$BLOCKCHAIN_INFO" | jq -r '.result.headers')
+
+    # Vérifier si la synchronisation est terminée
+    if [ "$IBD" = "false" ] && [ "$BLOCKS" -eq "$HEADERS" ]; then
+      echo "🎉 Le nœud NitoCoin est complètement synchronisé ! Blocs : $BLOCKS"
+      break
+    else
+      echo "Synchronisation en cours... Blocs : $BLOCKS / $HEADERS"
+      sleep 5
+    fi
+  done
+
+  # Vérifier une dernière fois le nombre de blocs
+  echo "🔍 Vérification finale du nombre de blocs :"
+  BLOCK_COUNT=$(curl -s --user "$RPC_USER:$RPC_PASSWORD" --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getblockcount", "params": []}' -H 'content-type: text/plain;' http://127.0.0.1:"$RPC_PORT" 2>/dev/null | jq -r '.result')
+  if [ -z "$BLOCK_COUNT" ]; then
+    echo "Erreur : Échec de la vérification RPC. Vérifiez que le nœud est opérationnel et que les identifiants RPC sont corrects."
+    exit 1
   fi
-done
+  echo "Nombre de blocs : $BLOCK_COUNT"
 
-# Vérifier une dernière fois le nombre de blocs
-echo "🔍 Vérification finale du nombre de blocs :"
-nito-cli -conf="$NITO_DIR/nito.conf" getblockcount
-if [ $? -ne 0 ]; then
-  echo "Erreur : Échec de la vérification RPC avec nito-cli. Vérifiez que le nœud est opérationnel et que les identifiants RPC sont corrects."
-  exit 1
+  # Recharger .bashrc pour appliquer le PATH au shell courant
+  source ~/.bashrc
+
+  echo "🎉 Node NitoCoin opérationnel et synchronisé. Poursuite avec l'installation de l'explorateur..."
 fi
-
-# Recharger .bashrc pour appliquer le PATH au shell courant
-source ~/.bashrc
-
-echo "🎉 Node NitoCoin opérationnel et synchronisé. Poursuite avec l'installation de l'explorateur..."
 
 # Étape 10 : Configurer le pare-feu pour l'explorateur
 echo "Configuration du pare-feu pour l'explorateur..."
@@ -444,6 +549,7 @@ cp "$TEMP_DIR/settings.json" "$EXPLORER_DIR/"
 sed -i "s/\"username\": \"user\"/\"username\": \"$RPC_USER\"/" "$EXPLORER_DIR/settings.json"
 sed -i "s/\"password\": \"pass\"/\"password\": \"$RPC_PASSWORD\"/" "$EXPLORER_DIR/settings.json"
 sed -i "s/\"port\": 8825/\"port\": $RPC_PORT/" "$EXPLORER_DIR/settings.json"
+sed -i "s/\"address\": \"localhost\"/\"address\": \"127.0.0.1\"/" "$EXPLORER_DIR/settings.json"
 # Modifier les chemins SSL pour correspondre au domaine saisi
 sed -i "s|/etc/letsencrypt/live/nito-explorer.nitopool.fr/cert.pem|/etc/letsencrypt/live/$DOMAIN/cert.pem|" "$EXPLORER_DIR/settings.json"
 sed -i "s|/etc/letsencrypt/live/nito-explorer.nitopool.fr/chain.pem|/etc/letsencrypt/live/$DOMAIN/chain.pem|" "$EXPLORER_DIR/settings.json"
@@ -593,7 +699,7 @@ fi
 # Ajouter des diagnostics supplémentaires
 echo "🔍 Diagnostics supplémentaires :"
 echo "État du nœud NitoCoin :"
-nito-cli -conf="$NITO_DIR/nito.conf" getblockchaininfo
+curl -s --user "$RPC_USER:$RPC_PASSWORD" --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getblockchaininfo", "params": []}' -H 'content-type: text/plain;' http://127.0.0.1:"$RPC_PORT" 2>/dev/null
 echo "État de l'explorateur :"
 pm2 list
 echo "Logs de la synchronisation initiale (dernières 20 lignes) :"
