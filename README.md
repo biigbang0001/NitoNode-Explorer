@@ -1,6 +1,6 @@
 ## Présentation
 
-**NitoNode-Explorer** est un script d'auto-installation conçu pour déployer un nœud complet NitoCoin ([https://github.com/NitoNetwork/Nito-core](https://github.com/NitoNetwork/Nito-core)) et un explorateur de blockchain eIquidus ([https://github.com/team-exor/eiquidus](https://github.com/team-exor/eiquidus)) sur un serveur Linux (Ubuntu 22.04 recommandé). Ce script automatise l'installation, la configuration, et la synchronisation des deux composants, te permettant d'avoir un nœud opérationnel et un explorateur web accessible en quelques étapes simples.
+**NitoNode-Explorer** est un script d'auto-installation conçu pour déployer un nœud complet NitoCoin ([https://github.com/NitoNetwork/Nito-core](https://github.com/NitoNetwork/Nito-core)) et un explorateur de blockchain eIquidus ([https://github.com/team-exor/eiquidus](https://github.com/team-exor/eiquidus)) sur un serveur Linux (Ubuntu 22.04 / Debian 12 recommandé). Ce script automatise l'installation, la configuration, et la synchronisation des deux composants, te permettant d'avoir un nœud opérationnel et un explorateur web accessible en quelques étapes simples.
 
 ### Fonctionnalités
 - Installation automatique du nœud NitoCoin (version 2.0.1).
@@ -14,7 +14,7 @@
 
 ## Prérequis
 Avant de commencer, assure-toi d'avoir :
-- Un serveur Linux (Ubuntu 22.04 recommandé).
+- Un serveur Linux (Ubuntu 22.04 / Debian 12 recommandé).
 - Accès root sur le serveur.
 - Une connexion Internet stable.
 - Un nom de domaine configuré pour pointer vers l'adresse IP de ton serveur (nécessaire pour l'explorateur).
