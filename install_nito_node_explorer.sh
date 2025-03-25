@@ -172,7 +172,7 @@ ExecStart=$NITO_NODE_DIR/bin/nitod -daemon -conf=$NITO_DIR/nito.conf
 ExecStop=$NITO_NODE_DIR/bin/nito-cli -conf=$NITO_DIR/nito.conf stop
 Restart=on-failure
 RestartSec=15
-StartLimitIntervalSec=120
+StartLimitInterval=60
 StartLimitBurst=5
 LimitNOFILE=1000000
 
