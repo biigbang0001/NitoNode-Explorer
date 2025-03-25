@@ -129,6 +129,14 @@ NITO_NODE_DIR="$INSTALL_DIR/nito-node"
 EXPLORER_DIR="$INSTALL_DIR/explorer"
 TEMP_DIR="$INSTALL_DIR/NitoNode-Explorer"
 
+# Créer le dossier temporaire pour les téléchargements (déplacé ici pour être exécuté dans tous les cas)
+echo "Création du dossier temporaire dans $TEMP_DIR..."
+mkdir -p "$TEMP_DIR"
+if [ ! -d "$TEMP_DIR" ]; then
+  echo "Erreur : Impossible de créer le dossier temporaire $TEMP_DIR."
+  exit 1
+fi
+
 # Recherche large de nito.conf
 echo "Recherche d'une configuration existante de NitoCoin (nito.conf)..."
 NITO_CONF=$(find /root /home "$INSTALL_DIR" -type f -name "nito.conf" 2>/dev/null | head -n 1)
@@ -181,14 +189,6 @@ if [ -z "$NITO_CONF" ] || [ -z "$RPC_USER" ] || [ -z "$RPC_PASSWORD" ] || [ -z "
   fi
   if echo "$RPC_PASSWORD" | grep -q "[[:space:]\"']"; then
     echo "Erreur : Le mot de passe RPC ne doit pas contenir d'espaces, de guillemets ou d'apostrophes."
-    exit 1
-  fi
-
-  # Étape 2 : Créer le dossier temporaire pour les téléchargements
-  echo "Création du dossier temporaire dans $TEMP_DIR..."
-  mkdir -p "$TEMP_DIR"
-  if [ ! -d "$TEMP_DIR" ]; then
-    echo "Erreur : Impossible de créer le dossier temporaire $TEMP_DIR."
     exit 1
   fi
 
