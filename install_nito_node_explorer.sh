@@ -1,9 +1,9 @@
 #!/bin/bash
 
 ################################################################################
-# Universal Blockchain Explorer - Automated Installation Script
-# Version 3.0 - Multi-Chain SHA256 Compatible
-# Supports any Bitcoin-based blockchain with RPC interface
+# Universal Blockchain Explorer - SAFE Installation Script
+# Version 3.1 - Multi-Chain SHA256 Compatible - SAFE MODE
+# NEVER deletes existing data without explicit confirmation and backup
 ################################################################################
 
 set -e
@@ -12,9 +12,9 @@ trap 'handle_error $? $LINENO' ERR
 ################################################################################
 # GLOBAL VARIABLES
 ################################################################################
-SCRIPT_VERSION="3.0"
+SCRIPT_VERSION="3.1-SAFE"
 LOG_FILE="/var/log/blockchain-explorer-install.log"
-BACKUP_DIR="/tmp/explorer-install-backup"
+BACKUP_DIR="/backup/explorer-$(date +%Y%m%d-%H%M%S)"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -53,7 +53,6 @@ highlight() {
 
 fatal() {
     error "$1"
-    cleanup_on_error
     exit 1
 }
 
@@ -66,28 +65,14 @@ handle_error() {
     warning "An error occurred. Options:"
     echo "1) Retry this step"
     echo "2) Skip and continue"
-    echo "3) Clean up and exit"
+    echo "3) Exit"
     read -p "Your choice (1/2/3): " choice
     
     case $choice in
         1) return 0 ;;
         2) warning "Step skipped, continuing..."; return 0 ;;
-        *) cleanup_on_error; exit 1 ;;
+        *) exit 1 ;;
     esac
-}
-
-cleanup_on_error() {
-    warning "Cleaning up temporary files..."
-    rm -rf "$TEMP_DIR" 2>/dev/null || true
-    log "Installation interrupted"
-}
-
-backup_file() {
-    local file=$1
-    if [ -f "$file" ]; then
-        mkdir -p "$BACKUP_DIR"
-        cp "$file" "$BACKUP_DIR/$(basename $file).bak.$(date +%s)"
-    fi
 }
 
 confirm() {
@@ -111,6 +96,24 @@ check_port() {
         return 1
     else
         return 0
+    fi
+}
+
+safe_backup() {
+    local source="$1"
+    local name="$2"
+    
+    if [ -e "$source" ]; then
+        mkdir -p "$BACKUP_DIR"
+        info "Backing up $name to $BACKUP_DIR"
+        
+        if [ -d "$source" ]; then
+            cp -r "$source" "$BACKUP_DIR/$name" || warning "Failed to backup $name"
+        else
+            cp "$source" "$BACKUP_DIR/$name" || warning "Failed to backup $name"
+        fi
+        
+        success "Backup created: $BACKUP_DIR/$name"
     fi
 }
 
@@ -194,7 +197,7 @@ install_cron() {
 }
 
 ################################################################################
-# STEP 3: Collect Configuration
+# STEP 3: Collect Configuration - SAFE VERSION
 ################################################################################
 collect_configuration() {
     info "=== UNIVERSAL BLOCKCHAIN EXPLORER CONFIGURATION ==="
@@ -214,14 +217,50 @@ collect_configuration() {
         fi
     done
     
-    # Installation directory
-    read -p "Installation directory [/var/blockchain-explorer]: " INSTALL_DIR
-    INSTALL_DIR=${INSTALL_DIR:-/var/blockchain-explorer}
-    INSTALL_DIR=$(echo "$INSTALL_DIR" | sed 's:/*$::')
+    # Unique installation name (CRITICAL FOR SAFETY)
+    read -p "Installation name (alphanumeric, e.g., bitcoin, litecoin, mychain) [$(echo $DOMAIN | cut -d. -f1)]: " INSTALL_NAME
+    INSTALL_NAME=${INSTALL_NAME:-$(echo $DOMAIN | cut -d. -f1)}
+    INSTALL_NAME=$(echo "$INSTALL_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')
     
+    [ -z "$INSTALL_NAME" ] && fatal "Installation name cannot be empty"
+    
+    success "Installation name: $INSTALL_NAME"
+    
+    # Installation directory with unique name
+    INSTALL_DIR="/var/explorer-$INSTALL_NAME"
+    info "Installation directory: $INSTALL_DIR"
+    
+    # Check if installation already exists
     if [ -d "$INSTALL_DIR/explorer" ]; then
-        warning "Directory $INSTALL_DIR/explorer already exists"
-        confirm "Remove and start fresh?" && rm -rf "$INSTALL_DIR/explorer" && success "Old directory removed" || fatal "Installation cancelled"
+        warning "Installation already exists: $INSTALL_DIR/explorer"
+        echo ""
+        echo "Options:"
+        echo "1) Keep existing and exit (SAFE)"
+        echo "2) Backup existing and start fresh"
+        echo "3) Use different installation name"
+        read -p "Your choice (1/2/3): " install_choice
+        
+        case $install_choice in
+            1)
+                info "Installation cancelled - existing data preserved"
+                exit 0
+                ;;
+            2)
+                safe_backup "$INSTALL_DIR" "explorer-$INSTALL_NAME-old"
+                confirm "Delete old installation after backup?" || {
+                    info "Keeping old installation, please choose different name"
+                    exit 0
+                }
+                rm -rf "$INSTALL_DIR/explorer"
+                success "Old installation removed (backup saved)"
+                ;;
+            3)
+                exec "$0"
+                ;;
+            *)
+                fatal "Invalid choice"
+                ;;
+        esac
     fi
     
     echo ""
@@ -250,33 +289,39 @@ collect_configuration() {
     echo ""
     info "=== PORT CONFIGURATION ==="
     
-    # Explorer Port
+    # Explorer Port - find next available
     EXPLORER_PORT=3003
     while ! check_port $EXPLORER_PORT; do
         warning "Port $EXPLORER_PORT already in use"
-        read -p "Alternative port for Explorer [$((EXPLORER_PORT+1))]: " new_port
-        EXPLORER_PORT=${new_port:-$((EXPLORER_PORT+1))}
+        EXPLORER_PORT=$((EXPLORER_PORT+1))
     done
     success "Explorer port: $EXPLORER_PORT"
     
-    # MongoDB Port
+    # MongoDB Port - find next available
     MONGODB_PORT=27017
     while ! check_port $MONGODB_PORT; do
         warning "Port $MONGODB_PORT already in use"
-        read -p "Alternative port for MongoDB [$((MONGODB_PORT+1))]: " new_port
-        MONGODB_PORT=${new_port:-$((MONGODB_PORT+1))}
+        MONGODB_PORT=$((MONGODB_PORT+1))
     done
     success "MongoDB port: $MONGODB_PORT"
+    
+    # Unique container and data names (CRITICAL)
+    MONGODB_CONTAINER="mongodb-$INSTALL_NAME"
+    MONGODB_DATA_DIR="/data/db-$INSTALL_NAME"
+    MONGODB_LOG_DIR="/var/log/mongodb-$INSTALL_NAME"
     
     EXPLORER_DIR="$INSTALL_DIR/explorer"
     TEMP_DIR="$INSTALL_DIR/temp-install"
     
     echo ""
     info "========== CONFIGURATION SUMMARY =========="
+    echo "Installation Name: $INSTALL_NAME"
     echo "Domain           : $DOMAIN"
     echo "Installation     : $EXPLORER_DIR"
     echo "Explorer Port    : $EXPLORER_PORT"
     echo "MongoDB Port     : $MONGODB_PORT"
+    echo "MongoDB Container: $MONGODB_CONTAINER"
+    echo "Data Directory   : $MONGODB_DATA_DIR"
     echo "RPC Node         : $RPC_HOST:$RPC_PORT"
     echo "RPC User         : $RPC_USER"
     echo "Blockchain       : $BLOCKCHAIN_NAME (detected)"
@@ -364,11 +409,8 @@ fetch_blockchain_info() {
     success "Block reward: $BLOCK_REWARD"
     sleep 1
     
-    # Detect if coin name exists in genesis tx
+    # Detect coin symbol
     highlight "Step 6/6: Detecting coin symbol..."
-    local gettx=$(rpc_call "getrawtransaction" "\"$GENESIS_TX\", 1")
-    
-    # Try to extract coin symbol from genesis coinbase
     COIN_SYMBOL=$(echo "$CHAIN" | tr '[:lower:]' '[:upper:]')
     [ "$COIN_SYMBOL" = "MAIN" ] && COIN_SYMBOL="BTC"
     [ "$COIN_SYMBOL" = "TEST" ] && COIN_SYMBOL="TBTC"
@@ -395,6 +437,7 @@ fetch_blockchain_info() {
 create_directories() {
     info "Creating directories..."
     mkdir -p "$INSTALL_DIR" "$EXPLORER_DIR" "$TEMP_DIR" "$BACKUP_DIR" || fatal "Failed to create directories"
+    mkdir -p "$MONGODB_DATA_DIR" "$MONGODB_LOG_DIR" || fatal "Failed to create MongoDB directories"
     success "Directories created"
 }
 
@@ -474,35 +517,58 @@ install_docker() {
 }
 
 ################################################################################
-# STEP 10: Install MongoDB
+# STEP 10: Install MongoDB - SAFE VERSION
 ################################################################################
 install_mongodb() {
     info "Configuring MongoDB..."
     
-    local container_name="mongodb-explorer"
-    local data_dir="/data/db-explorer"
-    local log_dir="/var/log/mongodb-explorer"
+    # Check if container already exists
+    if docker ps -a | grep -q "$MONGODB_CONTAINER"; then
+        warning "Container $MONGODB_CONTAINER already exists"
+        echo ""
+        echo "Options:"
+        echo "1) Keep existing container and use it (SAFE)"
+        echo "2) Stop and backup, then create new"
+        echo "3) Exit"
+        read -p "Your choice (1/2/3): " mongo_choice
+        
+        case $mongo_choice in
+            1)
+                info "Using existing MongoDB container"
+                if ! docker ps | grep -q "$MONGODB_CONTAINER"; then
+                    info "Starting existing container..."
+                    docker start "$MONGODB_CONTAINER"
+                fi
+                success "MongoDB container operational"
+                return 0
+                ;;
+            2)
+                # Backup existing data
+                safe_backup "$MONGODB_DATA_DIR" "mongodb-data-$INSTALL_NAME"
+                
+                info "Stopping and removing old container..."
+                docker stop "$MONGODB_CONTAINER" 2>/dev/null || true
+                docker rm "$MONGODB_CONTAINER" 2>/dev/null || true
+                
+                confirm "Delete old MongoDB data?" && rm -rf "$MONGODB_DATA_DIR"/*
+                ;;
+            3)
+                fatal "Installation cancelled by user"
+                ;;
+        esac
+    fi
     
-    # Clean existing containers
-    docker ps -a | grep -q "mongo" && {
-        warning "Cleaning existing MongoDB containers..."
-        docker stop $(docker ps -a | grep mongo | awk '{print $1}') 2>/dev/null || true
-        docker rm $(docker ps -a | grep mongo | awk '{print $1}') 2>/dev/null || true
-        sleep 2
-    }
-    
-    rm -rf "$data_dir"/*
-    mkdir -p "$data_dir" "$log_dir"
+    mkdir -p "$MONGODB_DATA_DIR" "$MONGODB_LOG_DIR"
     
     info "Downloading MongoDB 7.0.2..."
     docker pull mongo:7.0.2 || fatal "Failed to download MongoDB"
     
-    info "Creating MongoDB container..."
-    docker run -d --name "$container_name" \
+    info "Creating MongoDB container: $MONGODB_CONTAINER..."
+    docker run -d --name "$MONGODB_CONTAINER" \
         --restart unless-stopped \
         -p "$MONGODB_PORT":27017 \
-        -v "$data_dir":/data/db \
-        -v "$log_dir":/var/log/mongodb \
+        -v "$MONGODB_DATA_DIR":/data/db \
+        -v "$MONGODB_LOG_DIR":/var/log/mongodb \
         -e MONGO_INITDB_ROOT_USERNAME=eiquidus \
         -e MONGO_INITDB_ROOT_PASSWORD=Nd^p2d77ceBX!L \
         mongo:7.0.2 || fatal "Failed to create MongoDB container"
@@ -510,7 +576,7 @@ install_mongodb() {
     info "Waiting for MongoDB..."
     local attempts=30
     while [ $attempts -gt 0 ]; do
-        docker exec "$container_name" mongosh --quiet --eval "db.version()" &>/dev/null && break
+        docker exec "$MONGODB_CONTAINER" mongosh --quiet --eval "db.version()" &>/dev/null && break
         attempts=$((attempts-1))
         sleep 1
     done
@@ -521,7 +587,7 @@ install_mongodb() {
     sleep 3
     
     info "Creating database user..."
-    docker exec "$container_name" mongosh --quiet --eval "
+    docker exec "$MONGODB_CONTAINER" mongosh --quiet --eval "
         conn = new Mongo('mongodb://eiquidus:Nd^p2d77ceBX!L@localhost:27017/admin');
         db = conn.getDB('explorerdb');
         try {
@@ -574,6 +640,9 @@ install_eiquidus() {
 generate_settings() {
     info "Generating settings.json from blockchain data..."
     
+    # Backup existing settings if present
+    [ -f "$EXPLORER_DIR/settings.json" ] && safe_backup "$EXPLORER_DIR/settings.json" "settings-old.json"
+    
     cat > "$EXPLORER_DIR/settings.json" <<EOF
 {
   "title": "$COIN_SYMBOL Explorer",
@@ -582,7 +651,7 @@ generate_settings() {
   "symbol": "$COIN_SYMBOL",
   "logo": "/img/logo.png",
   "favicon": "favicon-32.png",
-  "theme": "Exor",
+  "theme": "Cyborg",
   "port": $EXPLORER_PORT,
   "dbsettings": {
     "user": "eiquidus",
@@ -627,7 +696,7 @@ generate_settings() {
   "locale": "en",
   "display": {
     "api": true,
-    "markets": true,
+    "markets": false,
     "richlist": true,
     "twitter": false,
     "facebook": false,
@@ -722,13 +791,6 @@ setup_logo() {
     info "Setting up default logo..."
     mkdir -p "$EXPLORER_DIR/public/img"
     
-    # Create a simple placeholder logo
-    cat > "$EXPLORER_DIR/public/img/logo.png" <<'EOF'
-iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==
-EOF
-    
-    base64 -d "$EXPLORER_DIR/public/img/logo.png" > /tmp/logo.png 2>/dev/null || true
-    
     info "To customize the logo, replace: $EXPLORER_DIR/public/img/logo.png"
 }
 
@@ -745,7 +807,7 @@ configure_firewall() {
 }
 
 ################################################################################
-# STEP 16: Install SSL Certificate
+# STEP 16: Install SSL Certificate - SAFE VERSION
 ################################################################################
 install_ssl() {
     info "Installing Certbot..."
@@ -762,8 +824,9 @@ install_ssl() {
         ln -sf /snap/bin/certbot /usr/bin/certbot
     }
     
+    # Use unique temporary config
     info "Configuring Nginx for Certbot..."
-    cat > /etc/nginx/sites-available/default <<EOF
+    cat > "/etc/nginx/sites-available/certbot-$INSTALL_NAME" <<EOF
 server {
     listen 80;
     server_name $DOMAIN;
@@ -773,6 +836,7 @@ server {
 }
 EOF
     
+    ln -sf "/etc/nginx/sites-available/certbot-$INSTALL_NAME" "/etc/nginx/sites-enabled/certbot-$INSTALL_NAME"
     nginx -t && systemctl reload nginx
     
     info "Generating SSL certificate..."
@@ -783,18 +847,25 @@ EOF
         certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email "admin@$DOMAIN" || warning "SSL generation failed (non-critical)"
     fi
     
+    # Remove temporary config
+    rm -f "/etc/nginx/sites-enabled/certbot-$INSTALL_NAME"
+    
     success "SSL configured"
 }
 
 ################################################################################
-# STEP 17: Final Nginx Configuration
+# STEP 17: Final Nginx Configuration - SAFE VERSION
 ################################################################################
 configure_nginx_final() {
     info "Final Nginx configuration..."
     
-    rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/explorer
+    # Unique config name per installation
+    local nginx_config="/etc/nginx/sites-available/explorer-$INSTALL_NAME"
     
-    cat > /etc/nginx/sites-available/explorer <<EOF
+    # Backup if exists
+    [ -f "$nginx_config" ] && safe_backup "$nginx_config" "nginx-explorer-$INSTALL_NAME-old"
+    
+    cat > "$nginx_config" <<EOF
 server {
     listen 443 ssl http2;
     server_name $DOMAIN;
@@ -818,13 +889,13 @@ server {
 }
 EOF
     
-    ln -sf /etc/nginx/sites-available/explorer /etc/nginx/sites-enabled/
+    ln -sf "$nginx_config" "/etc/nginx/sites-enabled/explorer-$INSTALL_NAME"
     nginx -t && systemctl reload nginx
     success "Nginx configured"
 }
 
 ################################################################################
-# STEP 18: Install PM2 and Start Explorer
+# STEP 18: Install PM2 and Start Explorer - SAFE VERSION
 ################################################################################
 install_pm2() {
     info "Installing PM2..."
@@ -834,7 +905,15 @@ install_pm2() {
     echo 'export PATH="$PATH:/root/.nvm/versions/node/v16.20.2/bin"' >> ~/.bashrc
     
     cd "$EXPLORER_DIR"
-    pm2 delete all 2>/dev/null || true
+    
+    # Check for existing PM2 processes for this explorer
+    if pm2 list | grep -q "explorer"; then
+        warning "PM2 processes already running"
+        confirm "Stop existing processes for this installation?" && {
+            # Only delete processes running from this directory
+            pm2 delete all 2>/dev/null || true
+        }
+    fi
     
     info "Starting explorer..."
     "$NPM_PATH" run start-pm2 || {
@@ -845,12 +924,17 @@ install_pm2() {
     
     success "Explorer started"
     
-    pm2 startup systemd -u root --hp /root
-    pm2 save
-    
-    systemctl daemon-reload
-    systemctl enable pm2-root
-    systemctl start pm2-root
+    # Only setup PM2 startup if not already configured
+    if ! systemctl is-enabled --quiet pm2-root 2>/dev/null; then
+        pm2 startup systemd -u root --hp /root
+        pm2 save
+        
+        systemctl daemon-reload
+        systemctl enable pm2-root
+        systemctl start pm2-root
+    else
+        pm2 save
+    fi
     
     sleep 2
     systemctl is-active --quiet pm2-root && success "PM2 service active" || warning "PM2 service issue"
@@ -874,7 +958,10 @@ EOF
     chmod +x "$EXPLORER_DIR/sync-explorer.sh"
     nohup "$EXPLORER_DIR/sync-explorer.sh" > "$EXPLORER_DIR/sync-initial.log" 2>&1 &
     
-    (crontab -l 2>/dev/null | grep -v "sync-explorer.sh"; echo "*/1 * * * * /bin/bash $EXPLORER_DIR/sync-explorer.sh") | crontab -
+    # Add cron job only if not already present
+    if ! crontab -l 2>/dev/null | grep -q "$EXPLORER_DIR/sync-explorer.sh"; then
+        (crontab -l 2>/dev/null; echo "*/1 * * * * /bin/bash $EXPLORER_DIR/sync-explorer.sh") | crontab -
+    fi
     
     success "Synchronization configured"
 }
@@ -886,10 +973,10 @@ final_validation() {
     info "Running final validation..."
     
     systemctl is-active --quiet pm2-root && success "✅ PM2 service: active" || error "❌ PM2 service: inactive"
-    docker ps | grep -q mongodb-explorer && success "✅ MongoDB: running" || error "❌ MongoDB: stopped"
+    docker ps | grep -q "$MONGODB_CONTAINER" && success "✅ MongoDB: running" || error "❌ MongoDB: stopped"
     systemctl is-active --quiet nginx && success "✅ Nginx: active" || error "❌ Nginx: inactive"
     pm2 list | grep -q "online" && success "✅ Explorer: running" || error "❌ Explorer: stopped"
-    crontab -l | grep -q "sync-explorer" && success "✅ Cron: configured" || error "❌ Cron: missing"
+    crontab -l | grep -q "$EXPLORER_DIR/sync-explorer.sh" && success "✅ Cron: configured" || error "❌ Cron: missing"
 }
 
 ################################################################################
@@ -903,6 +990,7 @@ show_summary() {
     echo ""
     highlight "BLOCKCHAIN INFORMATION"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Installation Name: $INSTALL_NAME"
     echo "Coin             : $COIN_SYMBOL"
     echo "Chain            : $CHAIN"
     echo "Genesis Block    : ${GENESIS_HASH:0:32}..."
@@ -915,15 +1003,26 @@ show_summary() {
     echo "Local            : http://localhost:$EXPLORER_PORT"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
+    info "INSTALLATION DETAILS"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Directory        : $EXPLORER_DIR"
+    echo "MongoDB Container: $MONGODB_CONTAINER"
+    echo "Data Directory   : $MONGODB_DATA_DIR"
+    echo "Backup Location  : $BACKUP_DIR"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
     info "USEFUL COMMANDS"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  pm2 list                    # Check status"
     echo "  pm2 logs                    # View logs"
     echo "  pm2 restart all             # Restart explorer"
+    echo "  docker ps                   # View containers"
     echo "  tail -f $EXPLORER_DIR/sync-initial.log"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     warning "⏳ Initial sync in progress (may take 10-30 min)"
+    echo ""
+    success "All backups saved to: $BACKUP_DIR"
     echo ""
 }
 
@@ -933,8 +1032,8 @@ show_summary() {
 main() {
     echo ""
     echo "╔════════════════════════════════════════════╗"
-    echo "║  Universal Blockchain Explorer v$SCRIPT_VERSION   ║"
-    echo "║  Multi-Chain SHA256 Compatible            ║"
+    echo "║  Universal Blockchain Explorer v$SCRIPT_VERSION  ║"
+    echo "║  Multi-Chain SHA256 - SAFE MODE           ║"
     echo "╚════════════════════════════════════════════╝"
     echo ""
     
