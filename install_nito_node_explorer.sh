@@ -1,20 +1,37 @@
 #!/bin/bash
 
 ################################################################################
-# Universal Blockchain Explorer - SAFE Installation Script
-# Version 3.1 - Multi-Chain SHA256 Compatible - SAFE MODE
-# NEVER deletes existing data without explicit confirmation and backup
+# NITO Blockchain Explorer - Installation Script
+# Version 4.0 - Multi-Explorer Compatible
+# Designed to coexist with other explorers (FixedCoin, etc.)
 ################################################################################
 
 set -e
 trap 'handle_error $? $LINENO' ERR
 
 ################################################################################
+# NITO-SPECIFIC CONFIGURATION
+################################################################################
+COIN_NAME="NITO"
+COIN_SYMBOL="NITO"
+INSTALL_NAME="nito"
+DEFAULT_RPC_PORT=8825
+DEFAULT_EXPLORER_PORT=3001
+GENESIS_BLOCK="00000000103d1acbedc9bb8ff2af8cb98a751965e784b4e1f978f3d5544c6c3c"
+GENESIS_TX="90b863a727d4abf9838e8df221052e418d70baf996e2cea3211e8df4da1bb131"
+
+# Unique identifiers for NITO (to avoid conflicts)
+MONGODB_DATABASE="explorerdb-nito"
+MONGODB_USER="eiquidus-nito"
+MONGODB_PASSWORD="Nd^p2d77ceBX!L"
+PM2_APP_NAME="explorer-nito"
+
+################################################################################
 # GLOBAL VARIABLES
 ################################################################################
-SCRIPT_VERSION="3.1-SAFE"
-LOG_FILE="/var/log/blockchain-explorer-install.log"
-BACKUP_DIR="/backup/explorer-$(date +%Y%m%d-%H%M%S)"
+SCRIPT_VERSION="4.0-NITO"
+LOG_FILE="/var/log/nito-explorer-install.log"
+BACKUP_DIR="/backup/explorer-nito-$(date +%Y%m%d-%H%M%S)"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -48,7 +65,7 @@ error() {
 }
 
 highlight() {
-    echo -e "${MAGENTA}[BLOCKCHAIN]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${MAGENTA}[NITO]${NC} $1" | tee -a "$LOG_FILE"
 }
 
 fatal() {
@@ -197,15 +214,16 @@ install_cron() {
 }
 
 ################################################################################
-# STEP 3: Collect Configuration - SAFE VERSION
+# STEP 3: Collect Configuration
 ################################################################################
 collect_configuration() {
-    info "=== UNIVERSAL BLOCKCHAIN EXPLORER CONFIGURATION ==="
+    echo ""
+    highlight "=== NITO EXPLORER CONFIGURATION ==="
     echo ""
     
     # Domain
     while true; do
-        read -p "Domain name (e.g., explorer.mychain.org): " DOMAIN
+        read -p "Domain name (e.g., nito-explorer.nitopool.fr): " DOMAIN
         [ -z "$DOMAIN" ] && { error "Domain cannot be empty"; continue; }
         
         if host "$DOMAIN" &>/dev/null; then
@@ -217,28 +235,20 @@ collect_configuration() {
         fi
     done
     
-    # Unique installation name (CRITICAL FOR SAFETY)
-    read -p "Installation name (alphanumeric, e.g., bitcoin, litecoin, mychain) [$(echo $DOMAIN | cut -d. -f1)]: " INSTALL_NAME
-    INSTALL_NAME=${INSTALL_NAME:-$(echo $DOMAIN | cut -d. -f1)}
-    INSTALL_NAME=$(echo "$INSTALL_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')
-    
-    [ -z "$INSTALL_NAME" ] && fatal "Installation name cannot be empty"
-    
-    success "Installation name: $INSTALL_NAME"
-    
-    # Installation directory with unique name
+    # Installation directory
     INSTALL_DIR="/var/explorer-$INSTALL_NAME"
+    EXPLORER_DIR="$INSTALL_DIR/explorer"
+    
     info "Installation directory: $INSTALL_DIR"
     
     # Check if installation already exists
-    if [ -d "$INSTALL_DIR/explorer" ]; then
-        warning "Installation already exists: $INSTALL_DIR/explorer"
+    if [ -d "$EXPLORER_DIR" ]; then
+        warning "Installation already exists: $EXPLORER_DIR"
         echo ""
         echo "Options:"
         echo "1) Keep existing and exit (SAFE)"
         echo "2) Backup existing and start fresh"
-        echo "3) Use different installation name"
-        read -p "Your choice (1/2/3): " install_choice
+        read -p "Your choice (1/2): " install_choice
         
         case $install_choice in
             1)
@@ -248,14 +258,11 @@ collect_configuration() {
             2)
                 safe_backup "$INSTALL_DIR" "explorer-$INSTALL_NAME-old"
                 confirm "Delete old installation after backup?" || {
-                    info "Keeping old installation, please choose different name"
+                    info "Keeping old installation"
                     exit 0
                 }
-                rm -rf "$INSTALL_DIR/explorer"
+                rm -rf "$EXPLORER_DIR"
                 success "Old installation removed (backup saved)"
-                ;;
-            3)
-                exec "$0"
                 ;;
             *)
                 fatal "Invalid choice"
@@ -264,78 +271,82 @@ collect_configuration() {
     fi
     
     echo ""
-    info "=== BLOCKCHAIN NODE CONNECTION ==="
+    highlight "=== NITO NODE CONNECTION ==="
     
     # RPC Host
     read -p "Node RPC host (IP or DNS) [127.0.0.1]: " RPC_HOST
     RPC_HOST=${RPC_HOST:-127.0.0.1}
     
     # RPC Port
-    read -p "Node RPC port [8332]: " RPC_PORT
-    RPC_PORT=${RPC_PORT:-8332}
+    read -p "Node RPC port [$DEFAULT_RPC_PORT]: " RPC_PORT
+    RPC_PORT=${RPC_PORT:-$DEFAULT_RPC_PORT}
     
     # RPC Credentials
-    read -p "RPC username: " RPC_USER
-    [ -z "$RPC_USER" ] && fatal "RPC username is required"
+    read -p "RPC username [user]: " RPC_USER
+    RPC_USER=${RPC_USER:-user}
     
-    read -sp "RPC password: " RPC_PASSWORD
+    read -sp "RPC password [pass]: " RPC_PASSWORD
     echo ""
-    [ -z "$RPC_PASSWORD" ] && fatal "RPC password is required"
+    RPC_PASSWORD=${RPC_PASSWORD:-pass}
     
-    # Test RPC connection early
+    # Test RPC connection
     info "Testing RPC connection..."
-    test_rpc_connection_early || fatal "Cannot continue without working RPC connection"
+    test_rpc_connection || fatal "Cannot continue without working RPC connection"
     
     echo ""
-    info "=== PORT CONFIGURATION ==="
+    highlight "=== PORT CONFIGURATION ==="
     
-    # Explorer Port - find next available
-    EXPLORER_PORT=3003
+    # Explorer Port - find available
+    EXPLORER_PORT=$DEFAULT_EXPLORER_PORT
     while ! check_port $EXPLORER_PORT; do
         warning "Port $EXPLORER_PORT already in use"
         EXPLORER_PORT=$((EXPLORER_PORT+1))
     done
     success "Explorer port: $EXPLORER_PORT"
     
-    # MongoDB Port - find next available
-    MONGODB_PORT=27017
-    while ! check_port $MONGODB_PORT; do
-        warning "Port $MONGODB_PORT already in use"
-        MONGODB_PORT=$((MONGODB_PORT+1))
-    done
-    success "MongoDB port: $MONGODB_PORT"
+    # Check for existing MongoDB container
+    if docker ps | grep -q "mongodb-explorer"; then
+        MONGODB_CONTAINER="mongodb-explorer"
+        MONGODB_PORT=27017
+        USE_EXISTING_MONGODB=true
+        success "Using existing MongoDB container: $MONGODB_CONTAINER"
+    else
+        MONGODB_CONTAINER="mongodb-$INSTALL_NAME"
+        MONGODB_PORT=27017
+        while ! check_port $MONGODB_PORT; do
+            warning "Port $MONGODB_PORT already in use"
+            MONGODB_PORT=$((MONGODB_PORT+1))
+        done
+        USE_EXISTING_MONGODB=false
+        info "Will create new MongoDB container: $MONGODB_CONTAINER"
+    fi
     
-    # Unique container and data names (CRITICAL)
-    MONGODB_CONTAINER="mongodb-$INSTALL_NAME"
     MONGODB_DATA_DIR="/data/db-$INSTALL_NAME"
     MONGODB_LOG_DIR="/var/log/mongodb-$INSTALL_NAME"
     
-    EXPLORER_DIR="$INSTALL_DIR/explorer"
-    TEMP_DIR="$INSTALL_DIR/temp-install"
-    
     echo ""
-    info "========== CONFIGURATION SUMMARY =========="
-    echo "Installation Name: $INSTALL_NAME"
+    highlight "========== CONFIGURATION SUMMARY =========="
+    echo "Coin             : $COIN_NAME ($COIN_SYMBOL)"
     echo "Domain           : $DOMAIN"
     echo "Installation     : $EXPLORER_DIR"
     echo "Explorer Port    : $EXPLORER_PORT"
-    echo "MongoDB Port     : $MONGODB_PORT"
     echo "MongoDB Container: $MONGODB_CONTAINER"
-    echo "Data Directory   : $MONGODB_DATA_DIR"
+    echo "MongoDB Database : $MONGODB_DATABASE"
+    echo "MongoDB User     : $MONGODB_USER"
+    echo "PM2 App Name     : $PM2_APP_NAME"
     echo "RPC Node         : $RPC_HOST:$RPC_PORT"
     echo "RPC User         : $RPC_USER"
-    echo "Blockchain       : $BLOCKCHAIN_NAME (detected)"
-    info "==========================================="
+    highlight "==========================================="
     echo ""
     
     confirm "Confirm this configuration?" Y || fatal "Installation cancelled"
 }
 
 ################################################################################
-# STEP 4: Test RPC and Detect Blockchain
+# STEP 4: Test RPC Connection
 ################################################################################
-test_rpc_connection_early() {
-    info "Connecting to blockchain node..."
+test_rpc_connection() {
+    info "Connecting to NITO node..."
     
     local test_response=$(rpc_call "getblockchaininfo" "")
     
@@ -352,97 +363,28 @@ test_rpc_connection_early() {
     success "RPC connection established"
     
     # Detect blockchain info
-    BLOCKCHAIN_NAME=$(extract_json_value "$test_response" "chain")
     BLOCKCHAIN_BLOCKS=$(extract_json_value "$test_response" "blocks")
-    
-    highlight "Connected to: $BLOCKCHAIN_NAME"
-    highlight "Current blocks: $BLOCKCHAIN_BLOCKS"
+    highlight "Connected to NITO - Current blocks: $BLOCKCHAIN_BLOCKS"
     
     return 0
 }
 
 ################################################################################
-# STEP 5: Fetch Blockchain Information
-################################################################################
-fetch_blockchain_info() {
-    info "Fetching blockchain information via RPC..."
-    echo ""
-    
-    # Get blockchain info
-    highlight "Step 1/6: Fetching blockchain info..."
-    local blockchain_info=$(rpc_call "getblockchaininfo" "")
-    CHAIN=$(extract_json_value "$blockchain_info" "chain")
-    BLOCKS=$(extract_json_value "$blockchain_info" "blocks")
-    success "Chain: $CHAIN | Blocks: $BLOCKS"
-    sleep 1
-    
-    # Get network info
-    highlight "Step 2/6: Fetching network info..."
-    local network_info=$(rpc_call "getnetworkinfo" "")
-    PROTOCOL_VERSION=$(extract_json_value "$network_info" "protocolversion")
-    success "Protocol version: $PROTOCOL_VERSION"
-    sleep 1
-    
-    # Get genesis block hash
-    highlight "Step 3/6: Fetching genesis block hash..."
-    local genesis_hash_response=$(rpc_call "getblockhash" "0")
-    GENESIS_HASH=$(extract_json_value "$genesis_hash_response" "result" | tr -d '"')
-    success "Genesis hash: ${GENESIS_HASH:0:16}..."
-    sleep 1
-    
-    # Get genesis block details
-    highlight "Step 4/6: Fetching genesis block details..."
-    local genesis_block=$(rpc_call "getblock" "\"$GENESIS_HASH\"")
-    GENESIS_TX=$(echo "$genesis_block" | grep -o '"tx":\["[^"]*"' | sed 's/.*"\([^"]*\)".*/\1/')
-    success "Genesis TX: ${GENESIS_TX:0:16}..."
-    sleep 1
-    
-    # Get block 1 for reward calculation
-    highlight "Step 5/6: Calculating block reward..."
-    local block1_hash=$(rpc_call "getblockhash" "1")
-    BLOCK1_HASH=$(extract_json_value "$block1_hash" "result" | tr -d '"')
-    local block1=$(rpc_call "getblock" "\"$BLOCK1_HASH\", 2")
-    
-    # Extract coinbase reward from block 1
-    BLOCK_REWARD=$(echo "$block1" | grep -o '"vout":\[{"value":[0-9.]*' | head -1 | grep -o '[0-9.]*$')
-    [ -z "$BLOCK_REWARD" ] && BLOCK_REWARD="50"
-    success "Block reward: $BLOCK_REWARD"
-    sleep 1
-    
-    # Detect coin symbol
-    highlight "Step 6/6: Detecting coin symbol..."
-    COIN_SYMBOL=$(echo "$CHAIN" | tr '[:lower:]' '[:upper:]')
-    [ "$COIN_SYMBOL" = "MAIN" ] && COIN_SYMBOL="BTC"
-    [ "$COIN_SYMBOL" = "TEST" ] && COIN_SYMBOL="TBTC"
-    
-    success "Coin symbol: $COIN_SYMBOL"
-    sleep 1
-    
-    echo ""
-    info "========== DETECTED BLOCKCHAIN INFO =========="
-    echo "Chain            : $CHAIN"
-    echo "Coin Symbol      : $COIN_SYMBOL"
-    echo "Current Blocks   : $BLOCKS"
-    echo "Protocol Version : $PROTOCOL_VERSION"
-    echo "Genesis Hash     : $GENESIS_HASH"
-    echo "Genesis TX       : $GENESIS_TX"
-    echo "Block Reward     : $BLOCK_REWARD"
-    info "=============================================="
-    echo ""
-}
-
-################################################################################
-# STEP 6: Create Directories
+# STEP 5: Create Directories
 ################################################################################
 create_directories() {
     info "Creating directories..."
-    mkdir -p "$INSTALL_DIR" "$EXPLORER_DIR" "$TEMP_DIR" "$BACKUP_DIR" || fatal "Failed to create directories"
-    mkdir -p "$MONGODB_DATA_DIR" "$MONGODB_LOG_DIR" || fatal "Failed to create MongoDB directories"
+    mkdir -p "$INSTALL_DIR" "$EXPLORER_DIR" "$BACKUP_DIR" || fatal "Failed to create directories"
+    
+    if [ "$USE_EXISTING_MONGODB" = false ]; then
+        mkdir -p "$MONGODB_DATA_DIR" "$MONGODB_LOG_DIR" || fatal "Failed to create MongoDB directories"
+    fi
+    
     success "Directories created"
 }
 
 ################################################################################
-# STEP 7: Install System Dependencies
+# STEP 6: Install System Dependencies
 ################################################################################
 install_system_dependencies() {
     info "Installing system dependencies..."
@@ -460,7 +402,7 @@ install_system_dependencies() {
 }
 
 ################################################################################
-# STEP 8: Install Node.js
+# STEP 7: Install Node.js
 ################################################################################
 install_nodejs() {
     info "Installing Node.js via NVM..."
@@ -468,7 +410,7 @@ install_nodejs() {
     export NVM_DIR="/root/.nvm"
     
     if [ -d "$NVM_DIR" ]; then
-        warning "NVM already installed"
+        info "NVM already installed"
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
     else
         info "Downloading and installing NVM..."
@@ -492,7 +434,7 @@ install_nodejs() {
 }
 
 ################################################################################
-# STEP 9: Install Docker
+# STEP 8: Install Docker
 ################################################################################
 install_docker() {
     info "Checking Docker..."
@@ -517,84 +459,81 @@ install_docker() {
 }
 
 ################################################################################
-# STEP 10: Install MongoDB - SAFE VERSION
+# STEP 9: Configure MongoDB - Multi-Explorer Compatible
 ################################################################################
-install_mongodb() {
-    info "Configuring MongoDB..."
+configure_mongodb() {
+    info "Configuring MongoDB for NITO..."
     
-    # Check if container already exists
-    if docker ps -a | grep -q "$MONGODB_CONTAINER"; then
-        warning "Container $MONGODB_CONTAINER already exists"
-        echo ""
-        echo "Options:"
-        echo "1) Keep existing container and use it (SAFE)"
-        echo "2) Stop and backup, then create new"
-        echo "3) Exit"
-        read -p "Your choice (1/2/3): " mongo_choice
+    if [ "$USE_EXISTING_MONGODB" = true ]; then
+        info "Using existing MongoDB container: $MONGODB_CONTAINER"
         
-        case $mongo_choice in
-            1)
-                info "Using existing MongoDB container"
-                if ! docker ps | grep -q "$MONGODB_CONTAINER"; then
-                    info "Starting existing container..."
-                    docker start "$MONGODB_CONTAINER"
-                fi
-                success "MongoDB container operational"
-                return 0
-                ;;
-            2)
-                # Backup existing data
-                safe_backup "$MONGODB_DATA_DIR" "mongodb-data-$INSTALL_NAME"
-                
-                info "Stopping and removing old container..."
-                docker stop "$MONGODB_CONTAINER" 2>/dev/null || true
-                docker rm "$MONGODB_CONTAINER" 2>/dev/null || true
-                
-                confirm "Delete old MongoDB data?" && rm -rf "$MONGODB_DATA_DIR"/*
-                ;;
-            3)
-                fatal "Installation cancelled by user"
-                ;;
-        esac
+        # Create NITO-specific database and user
+        info "Creating NITO database and user..."
+        docker exec "$MONGODB_CONTAINER" mongosh --quiet --eval "
+            conn = new Mongo('mongodb://eiquidus:Nd^p2d77ceBX!L@localhost:27017/admin');
+            db = conn.getDB('$MONGODB_DATABASE');
+            try {
+                db.createUser({
+                    user: '$MONGODB_USER',
+                    pwd: '$MONGODB_PASSWORD',
+                    roles: [{ role: 'readWrite', db: '$MONGODB_DATABASE' }]
+                });
+                print('User $MONGODB_USER created for database $MONGODB_DATABASE');
+            } catch(e) { 
+                if (e.code !== 51003) throw e;
+                print('User already exists');
+            }
+        " || warning "Database user creation had issues (may already exist)"
+        
+        success "MongoDB configured for NITO"
+        return 0
     fi
     
-    mkdir -p "$MONGODB_DATA_DIR" "$MONGODB_LOG_DIR"
-    
-    info "Downloading MongoDB 7.0.2..."
-    docker pull mongo:7.0.2 || fatal "Failed to download MongoDB"
-    
-    info "Creating MongoDB container: $MONGODB_CONTAINER..."
-    docker run -d --name "$MONGODB_CONTAINER" \
-        --restart unless-stopped \
-        -p "$MONGODB_PORT":27017 \
-        -v "$MONGODB_DATA_DIR":/data/db \
-        -v "$MONGODB_LOG_DIR":/var/log/mongodb \
-        -e MONGO_INITDB_ROOT_USERNAME=eiquidus \
-        -e MONGO_INITDB_ROOT_PASSWORD=Nd^p2d77ceBX!L \
-        mongo:7.0.2 || fatal "Failed to create MongoDB container"
-    
-    info "Waiting for MongoDB..."
-    local attempts=30
-    while [ $attempts -gt 0 ]; do
-        docker exec "$MONGODB_CONTAINER" mongosh --quiet --eval "db.version()" &>/dev/null && break
-        attempts=$((attempts-1))
-        sleep 1
-    done
-    
-    [ $attempts -eq 0 ] && fatal "MongoDB not responding"
-    success "MongoDB operational"
+    # Create new MongoDB container if needed
+    if docker ps -a | grep -q "$MONGODB_CONTAINER"; then
+        warning "Container $MONGODB_CONTAINER already exists"
+        if ! docker ps | grep -q "$MONGODB_CONTAINER"; then
+            info "Starting existing container..."
+            docker start "$MONGODB_CONTAINER"
+        fi
+    else
+        mkdir -p "$MONGODB_DATA_DIR" "$MONGODB_LOG_DIR"
+        
+        info "Downloading MongoDB 7.0.2..."
+        docker pull mongo:7.0.2 || fatal "Failed to download MongoDB"
+        
+        info "Creating MongoDB container: $MONGODB_CONTAINER..."
+        docker run -d --name "$MONGODB_CONTAINER" \
+            --restart unless-stopped \
+            -p "$MONGODB_PORT":27017 \
+            -v "$MONGODB_DATA_DIR":/data/db \
+            -v "$MONGODB_LOG_DIR":/var/log/mongodb \
+            -e MONGO_INITDB_ROOT_USERNAME=eiquidus \
+            -e MONGO_INITDB_ROOT_PASSWORD=Nd^p2d77ceBX!L \
+            mongo:7.0.2 || fatal "Failed to create MongoDB container"
+        
+        info "Waiting for MongoDB..."
+        local attempts=30
+        while [ $attempts -gt 0 ]; do
+            docker exec "$MONGODB_CONTAINER" mongosh --quiet --eval "db.version()" &>/dev/null && break
+            attempts=$((attempts-1))
+            sleep 1
+        done
+        
+        [ $attempts -eq 0 ] && fatal "MongoDB not responding"
+    fi
     
     sleep 3
     
-    info "Creating database user..."
+    info "Creating NITO database user..."
     docker exec "$MONGODB_CONTAINER" mongosh --quiet --eval "
         conn = new Mongo('mongodb://eiquidus:Nd^p2d77ceBX!L@localhost:27017/admin');
-        db = conn.getDB('explorerdb');
+        db = conn.getDB('$MONGODB_DATABASE');
         try {
             db.createUser({
-                user: 'eiquidus',
-                pwd: 'Nd^p2d77ceBX!L',
-                roles: [{ role: 'readWrite', db: 'explorerdb' }]
+                user: '$MONGODB_USER',
+                pwd: '$MONGODB_PASSWORD',
+                roles: [{ role: 'readWrite', db: '$MONGODB_DATABASE' }]
             });
         } catch(e) { if (e.code !== 51003) throw e; }
     " &>/dev/null
@@ -603,7 +542,7 @@ install_mongodb() {
 }
 
 ################################################################################
-# STEP 11: Install Nginx
+# STEP 10: Install Nginx
 ################################################################################
 install_nginx() {
     info "Installing Nginx..."
@@ -613,7 +552,7 @@ install_nginx() {
 }
 
 ################################################################################
-# STEP 12: Install eIquidus
+# STEP 11: Install eIquidus
 ################################################################################
 install_eiquidus() {
     info "Installing eIquidus..."
@@ -635,167 +574,579 @@ install_eiquidus() {
 }
 
 ################################################################################
-# STEP 13: Generate settings.json from Blockchain Data
+# STEP 12: Generate settings.json for NITO
 ################################################################################
 generate_settings() {
-    info "Generating settings.json from blockchain data..."
+    info "Generating settings.json for NITO..."
     
-    # Backup existing settings if present
     [ -f "$EXPLORER_DIR/settings.json" ] && safe_backup "$EXPLORER_DIR/settings.json" "settings-old.json"
     
-    cat > "$EXPLORER_DIR/settings.json" <<EOF
+    cat > "$EXPLORER_DIR/settings.json" <<'SETTINGS_EOF'
 {
-  "title": "$COIN_SYMBOL Explorer",
-  "address": "https://$DOMAIN",
-  "coin": "$COIN_SYMBOL",
-  "symbol": "$COIN_SYMBOL",
-  "logo": "/img/logo.png",
-  "favicon": "favicon-32.png",
-  "theme": "Cyborg",
-  "port": $EXPLORER_PORT,
+  "locale": "locale/en.json",
+
   "dbsettings": {
-    "user": "eiquidus",
-    "password": "Nd^p2d77ceBX!L",
-    "database": "explorerdb",
+    "user": "MONGODB_USER_PLACEHOLDER",
+    "password": "MONGODB_PASSWORD_PLACEHOLDER",
+    "database": "MONGODB_DATABASE_PLACEHOLDER",
     "address": "localhost",
-    "port": $MONGODB_PORT
+    "port": MONGODB_PORT_PLACEHOLDER
   },
-  "update_timeout": 10,
-  "check_timeout": 250,
+
   "wallet": {
-    "host": "$RPC_HOST",
-    "port": $RPC_PORT,
-    "username": "$RPC_USER",
-    "password": "$RPC_PASSWORD"
+    "host": "RPC_HOST_PLACEHOLDER",
+    "port": RPC_PORT_PLACEHOLDER,
+    "username": "RPC_USER_PLACEHOLDER",
+    "password": "RPC_PASSWORD_PLACEHOLDER"
   },
-  "genesis_tx": "$GENESIS_TX",
-  "genesis_block": "$GENESIS_HASH",
-  "use_rpc": true,
-  "heavy": false,
-  "lock_during_index": false,
-  "txcount": 100,
-  "txcount_per_page": 50,
-  "show_sent_received": true,
-  "supply": "COINBASE",
-  "nethash": "netmhashps",
-  "nethash_units": "MH",
-  "labels": {
-    "api": "API",
-    "coin": "Coin",
-    "markets": "Markets",
-    "richlist": "Rich List",
-    "network": "Network",
-    "movement": "Movement",
-    "block": "Block",
-    "blocklist": "Block List",
-    "peers": "Peers",
-    "transactions": "Transactions",
-    "address": "Address",
-    "search": "Search"
-  },
-  "locale": "en",
-  "display": {
-    "api": true,
-    "markets": false,
-    "richlist": true,
-    "twitter": false,
-    "facebook": false,
-    "googleplus": false,
-    "bitcointalk": false,
-    "website": false,
-    "slack": false,
-    "github": false,
-    "discord": false,
-    "instagram": false,
-    "reddit": false,
-    "telegram": false,
-    "youtube": false,
-    "search": true,
-    "movement": true,
-    "network": true,
-    "masternodes": false,
-    "peers": true,
-    "reward": $BLOCK_REWARD,
-    "difficulty": "POW"
-  },
-  "index": {
-    "show_hashrate": true,
-    "difficulty": "POW",
-    "show_last_updated": true
-  },
-  "api_page": {
-    "enabled": true,
-    "blockindex": 1,
-    "blockhash": "$GENESIS_HASH",
-    "txhash": "$GENESIS_TX",
-    "address": ""
-  },
-  "markets_page": {
-    "enabled": false
-  },
-  "richlist_page": {
-    "enabled": true,
-    "amount": 100
-  },
-  "movement_page": {
-    "enabled": true,
-    "low_flag": 100,
-    "high_flag": 1000
-  },
-  "network_page": {
-    "enabled": true
-  },
-  "masternodes_page": {
-    "enabled": false
-  },
-  "shared_pages": {
-    "page_header": {
-      "network_charts": {
-        "enabled": false
-      }
-    }
-  },
+
   "webserver": {
-    "port": $EXPLORER_PORT,
+    "port": EXPLORER_PORT_PLACEHOLDER,
     "tls": {
       "enabled": false,
       "port": 443,
-      "always_redirect": false,
-      "cert_file": "",
-      "chain_file": "",
-      "key_file": ""
+      "always_redirect": true,
+      "cert_file": "/etc/letsencrypt/live/DOMAIN_PLACEHOLDER/cert.pem",
+      "chain_file": "/etc/letsencrypt/live/DOMAIN_PLACEHOLDER/chain.pem",
+      "key_file": "/etc/letsencrypt/live/DOMAIN_PLACEHOLDER/privkey.pem"
+    },
+    "cors": {
+      "enabled": true,
+      "corsorigin": "*"
     }
   },
-  "confirmations": 6,
-  "sync": {
-    "update_stats_on_sync": true
+
+  "coin": {
+    "name": "NITO",
+    "symbol": "NITO"
   },
+
+  "network_history": {
+    "enabled": true,
+    "max_saved_records": 10080
+  },
+
+  "shared_pages": {
+    "theme": "Cyborg",
+    "page_title": "NITO Explorer",
+    "favicons": {
+      "favicon32": "favicon-32.png",
+      "favicon128": "favicon-128.png",
+      "favicon180": "favicon-180.png",
+      "favicon192": "favicon-192.png"
+    },
+    "logo": "/img/logo.png",
+    "date_time": {
+      "display_format": "LLL dd, yyyy HH:mm:ss ZZZZ",
+      "timezone": "utc",
+      "enable_alt_timezone_tooltips": false
+    },
+    "table_header_bgcolor": "",
+    "confirmations": 6,
+    "difficulty": "POW",
+    "show_hashrate": true,
+    "page_header": {
+      "menu": "side",
+      "sticky_header": true,
+      "bgcolor": "",
+      "home_link": "logo",
+      "home_link_logo": "/img/header-logo.png",
+      "home_link_logo_height": 50,
+      "panels": {
+        "network_panel": {
+          "enabled": true,
+          "display_order": 1,
+          "nethash": "getnetworkhashps",
+          "nethash_units": "G"
+        },
+        "difficulty_panel": {
+          "enabled": true,
+          "display_order": 2
+        },
+        "masternodes_panel": {
+          "enabled": false,
+          "display_order": 0
+        },
+        "coin_supply_panel": {
+          "enabled": true,
+          "display_order": 3
+        },
+        "price_panel": {
+          "enabled": false,
+          "display_order": 0
+        },
+        "usd_price_panel": {
+          "enabled": false,
+          "display_order": 0
+        },
+        "market_cap_panel": {
+          "enabled": false,
+          "display_order": 0
+        },
+        "usd_market_cap_panel": {
+          "enabled": false,
+          "display_order": 0
+        },
+        "logo_panel": {
+          "enabled": true,
+          "display_order": 4
+        },
+        "spacer_panel_1": {
+          "enabled": false,
+          "display_order": 0
+        },
+        "spacer_panel_2": {
+          "enabled": false,
+          "display_order": 0
+        },
+        "spacer_panel_3": {
+          "enabled": false,
+          "display_order": 0
+        }
+      },
+      "search": {
+        "enabled": true,
+        "position": "inside-header"
+      },
+      "page_title_image": {
+        "image_path": "/img/page-title-img.png",
+        "enable_animation": true
+      },
+      "network_charts": {
+        "nethash_chart": {
+          "enabled": true,
+          "bgcolor": "#ffffff",
+          "line_color": "rgba(54, 162, 235, 1)",
+          "fill_color": "rgba(54, 162, 235, 0.2)",
+          "crosshair_color": "#000000",
+          "round_decimals": 3
+        },
+        "difficulty_chart": {
+          "enabled": true,
+          "bgcolor": "#ffffff",
+          "pow_line_color": "rgba(255, 99, 132, 1)",
+          "pow_fill_color": "rgba(255, 99, 132, 0.2)",
+          "pos_line_color": "rgba(255, 161, 0, 1)",
+          "pos_fill_color": "rgba(255, 161, 0, 0.2)",
+          "crosshair_color": "#000000",
+          "round_decimals": 3
+        },
+        "reload_chart_seconds": 60
+      }
+    },
+    "page_footer": {
+      "sticky_footer": false,
+      "bgcolor": "",
+      "footer_height_desktop": "50px",
+      "footer_height_tablet": "70px",
+      "footer_height_mobile": "70px",
+      "social_links": [
+        {
+          "enabled": true,
+          "tooltip_text": "Github",
+          "url": "https://github.com/NitoNetwork/Nito-core",
+          "fontawesome_class": "fa-brands fa-github",
+          "image_path": ""
+        },
+        {
+          "enabled": true,
+          "tooltip_text": "Twitter",
+          "url": "https://x.com/NitoCoin",
+          "fontawesome_class": "fa-brands fa-twitter",
+          "image_path": ""
+        },
+        {
+          "enabled": true,
+          "tooltip_text": "Discord",
+          "url": "https://discord.gg/nito",
+          "fontawesome_class": "fa-brands fa-discord",
+          "image_path": ""
+        },
+        {
+          "enabled": true,
+          "tooltip_text": "Website",
+          "url": "https://nito.network/",
+          "fontawesome_class": "",
+          "image_path": "/img/external.png"
+        }
+      ],
+      "social_link_percent_height_desktop": 140,
+      "social_link_percent_height_tablet": 84,
+      "social_link_percent_height_mobile": 80,
+      "powered_by_text": "<a class='nav-link poweredby' href='https://github.com/team-exor/eiquidus' target='_blank'>eIquidus v{explorer_version}</a>"
+    }
+  },
+
+  "index_page": {
+    "show_panels": true,
+    "show_nethash_chart": true,
+    "show_difficulty_chart": true,
+    "page_header": {
+      "show_img": true,
+      "show_title": true,
+      "show_last_updated": true,
+      "show_description": true
+    },
+    "transaction_table": {
+      "page_length_options": [ 10, 25, 50, 75, 100 ],
+      "items_per_page": 10,
+      "reload_table_seconds": 60
+    }
+  },
+
+  "block_page": {
+    "show_panels": false,
+    "show_nethash_chart": false,
+    "show_difficulty_chart": false,
+    "page_header": {
+      "show_img": true,
+      "show_title": true,
+      "show_description": true
+    },
+    "genesis_block": "00000000103d1acbedc9bb8ff2af8cb98a751965e784b4e1f978f3d5544c6c3c",
+    "multi_algorithm": {
+      "show_algo": false,
+      "key_name": "pow_algo"
+    }
+  },
+
+  "transaction_page": {
+    "show_panels": false,
+    "show_nethash_chart": false,
+    "show_difficulty_chart": false,
+    "page_header": {
+      "show_img": true,
+      "show_title": true,
+      "show_description": true
+    },
+    "genesis_tx": "90b863a727d4abf9838e8df221052e418d70baf996e2cea3211e8df4da1bb131",
+    "show_op_return": false
+  },
+
+  "address_page": {
+    "show_panels": false,
+    "show_nethash_chart": false,
+    "show_difficulty_chart": false,
+    "page_header": {
+      "show_img": true,
+      "show_title": true,
+      "show_description": true
+    },
+    "show_sent_received": true,
+    "enable_hidden_address_view": false,
+    "enable_unknown_address_view": false,
+    "history_table": {
+      "page_length_options": [ 10, 25, 50, 75, 100 ],
+      "items_per_page": 50
+    }
+  },
+
+  "error_page": {
+    "show_panels": false,
+    "show_nethash_chart": false,
+    "show_difficulty_chart": false,
+    "page_header": {
+      "show_img": true,
+      "show_title": true,
+      "show_description": true
+    }
+  },
+
+  "masternodes_page": {
+    "enabled": false,
+    "show_panels": false,
+    "show_nethash_chart": false,
+    "show_difficulty_chart": false,
+    "page_header": {
+      "show_img": true,
+      "show_title": true,
+      "show_last_updated": true,
+      "show_description": true
+    },
+    "masternode_table": {
+      "page_length_options": [ 10, 25, 50, 75, 100 ],
+      "items_per_page": 10
+    }
+  },
+
+  "movement_page": {
+    "enabled": true,
+    "show_panels": false,
+    "show_nethash_chart": false,
+    "show_difficulty_chart": false,
+    "page_header": {
+      "show_img": true,
+      "show_title": true,
+      "show_last_updated": true,
+      "show_description": true
+    },
+    "movement_table": {
+      "page_length_options": [ 10, 25, 50, 75, 100 ],
+      "items_per_page": 10,
+      "reload_table_seconds": 45,
+      "min_amount": 100,
+      "low_warning_flag": 1000,
+      "high_warning_flag": 5000
+    }
+  },
+
+  "network_page": {
+    "enabled": true,
+    "show_panels": false,
+    "show_nethash_chart": false,
+    "show_difficulty_chart": false,
+    "page_header": {
+      "show_img": true,
+      "show_title": true,
+      "show_last_updated": true,
+      "show_description": true
+    },
+    "connections_table": {
+      "page_length_options": [ 10, 25, 50, 75, 100 ],
+      "items_per_page": 10,
+      "port_filter": -1,
+      "hide_protocols": [ ]
+    },
+    "addnodes_table": {
+      "page_length_options": [ 10, 25, 50, 75, 100 ],
+      "items_per_page": 10,
+      "port_filter": -1,
+      "hide_protocols": [ ]
+    },
+    "onetry_table": {
+      "page_length_options": [ 10, 25, 50, 75, 100 ],
+      "items_per_page": 10,
+      "port_filter": -1,
+      "hide_protocols": [ ]
+    }
+  },
+
+  "richlist_page": {
+    "enabled": true,
+    "show_panels": false,
+    "show_nethash_chart": false,
+    "show_difficulty_chart": false,
+    "page_header": {
+      "show_img": true,
+      "show_title": true,
+      "show_last_updated": true,
+      "show_description": true
+    },
+    "show_current_balance": true,
+    "show_received_coins": true,
+    "wealth_distribution": {
+      "show_distribution_table": true,
+      "show_distribution_chart": true,
+      "colors": [ "#e73cbd", "#00bc8c", "#3498db", "#e3ce3e", "#adb5bd", "#e74c3c" ]
+    },
+    "burned_coins": {
+      "addresses": [ ],
+      "include_burned_coins_in_distribution": false
+    }
+  },
+
+  "markets_page": {
+    "enabled": false,
+    "show_panels": false,
+    "show_nethash_chart": false,
+    "show_difficulty_chart": false,
+    "page_header": {
+      "show_img": true,
+      "show_title": true,
+      "show_last_updated": true,
+      "show_exchange_url": true,
+      "show_description": true
+    },
+    "show_market_dropdown_menu": false,
+    "show_market_select": false,
+    "exchanges": {
+      "altmarkets": { "enabled": false, "trading_pairs": [ ] },
+      "dextrade": { "enabled": false, "trading_pairs": [ ] },
+      "freiexchange": { "enabled": false, "trading_pairs": [ ] },
+      "nonkyc": { "enabled": false, "trading_pairs": [ ] },
+      "poloniex": { "enabled": false, "trading_pairs": [ ] },
+      "xeggex": { "enabled": false, "trading_pairs": [ ] },
+      "yobit": { "enabled": false, "trading_pairs": [ ] }
+    },
+    "market_price": "AVERAGE",
+    "coingecko_currency": "BTC",
+    "coingecko_api_key": "",
+    "default_exchange": {
+      "exchange_name": "",
+      "trading_pair": ""
+    }
+  },
+
+  "api_page": {
+    "enabled": true,
+    "show_panels": false,
+    "show_nethash_chart": false,
+    "show_difficulty_chart": false,
+    "page_header": {
+      "show_img": true,
+      "show_title": true,
+      "show_description": true
+    },
+    "show_logo": true,
+    "sample_data": {
+      "blockindex": 10,
+      "blockhash": "00000000103d1acbedc9bb8ff2af8cb98a751965e784b4e1f978f3d5544c6c3c",
+      "txhash": "90b863a727d4abf9838e8df221052e418d70baf996e2cea3211e8df4da1bb131",
+      "address": ""
+    },
+    "public_apis": {
+      "rpc": {
+        "getdifficulty": { "enabled": true },
+        "getconnectioncount": { "enabled": true },
+        "getblockcount": { "enabled": true },
+        "getblockhash": { "enabled": true },
+        "getblock": { "enabled": true },
+        "getrawtransaction": { "enabled": true },
+        "getnetworkhashps": { "enabled": true },
+        "getvotelist": { "enabled": false },
+        "getmasternodecount": { "enabled": false }
+      },
+      "ext": {
+        "getmoneysupply": { "enabled": true },
+        "getdistribution": { "enabled": true },
+        "getaddress": { "enabled": true },
+        "getaddresstxs": { "enabled": true, "max_items_per_query": 100 },
+        "gettx": { "enabled": true },
+        "getbalance": { "enabled": true },
+        "getlasttxs": { "enabled": true, "max_items_per_query": 100 },
+        "getcurrentprice": { "enabled": false },
+        "getnetworkpeers": { "enabled": true },
+        "getbasicstats": { "enabled": true },
+        "getsummary": { "enabled": true },
+        "getmasternodelist": { "enabled": false },
+        "getmasternoderewards": { "enabled": false },
+        "getmasternoderewardstotal": { "enabled": false }
+      }
+    }
+  },
+
+  "claim_address_page": {
+    "enabled": false,
+    "show_panels": false,
+    "show_nethash_chart": false,
+    "show_difficulty_chart": false,
+    "page_header": {
+      "show_img": true,
+      "show_title": true,
+      "show_description": true
+    },
+    "show_header_menu": false,
+    "enable_bad_word_filter": true,
+    "enable_captcha": false
+  },
+
+  "orphans_page": {
+    "enabled": false,
+    "show_panels": false,
+    "show_nethash_chart": false,
+    "show_difficulty_chart": false,
+    "page_header": {
+      "show_img": true,
+      "show_title": true,
+      "show_last_updated": true,
+      "show_description": true
+    },
+    "orphans_table": {
+      "page_length_options": [ 10, 25, 50, 75, 100 ],
+      "items_per_page": 10
+    }
+  },
+
+  "sync": {
+    "block_parallel_tasks": 1,
+    "update_timeout": 10,
+    "check_timeout": 250,
+    "save_stats_after_sync_blocks": 100,
+    "show_sync_msg_when_syncing_more_than_blocks": 1000,
+    "supply": "COINBASE"
+  },
+
+  "captcha": {
+    "google_recaptcha3": { "enabled": false, "pass_score": 0.5, "site_key": "", "secret_key": "" },
+    "google_recaptcha2": { "enabled": false, "captcha_type": "checkbox", "site_key": "", "secret_key": "" },
+    "hcaptcha": { "enabled": false, "site_key": "", "secret_key": "" }
+  },
+
+  "labels": {},
+
+  "default_coingecko_ids": [
+    { "symbol": "btc", "id": "bitcoin" },
+    { "symbol": "eth", "id": "ethereum" },
+    { "symbol": "usdt", "id": "tether" },
+    { "symbol": "nito", "id": "nitocoin" }
+  ],
+
+  "api_cmds": {
+    "use_rpc": true,
+    "rpc_concurrent_tasks": 1,
+    "getnetworkhashps": "getnetworkhashps",
+    "getmininginfo": "getmininginfo",
+    "getdifficulty": "getdifficulty",
+    "getconnectioncount": "getconnectioncount",
+    "getblockcount": "getblockcount",
+    "getblockhash": "getblockhash",
+    "getblock": "getblock",
+    "getrawtransaction": "getrawtransaction",
+    "getinfo": "getinfo",
+    "getblockchaininfo": "getblockchaininfo",
+    "getpeerinfo": "getpeerinfo",
+    "gettxoutsetinfo": "gettxoutsetinfo",
+    "getvotelist": "",
+    "getmasternodecount": "",
+    "getmasternodelist": "",
+    "verifymessage": "verifymessage"
+  },
+
   "blockchain_specific": {
     "bitcoin": {
-      "genesis_tx": "$GENESIS_TX",
-      "genesis_block": "$GENESIS_HASH",
-      "block_time_sec": 600
-    }
+      "enabled": false,
+      "api_cmds": {
+        "getdescriptorinfo": "getdescriptorinfo",
+        "deriveaddresses": "deriveaddresses"
+      }
+    },
+    "heavycoin": { "enabled": false },
+    "zksnarks": { "enabled": false }
   },
-  "donation_address": ""
+
+  "plugins": {
+    "plugin_secret_code": "NITO2025SecureKey!@#$",
+    "allowed_plugins": []
+  }
 }
-EOF
+SETTINGS_EOF
+
+    # Replace placeholders
+    sed -i "s/MONGODB_USER_PLACEHOLDER/$MONGODB_USER/g" "$EXPLORER_DIR/settings.json"
+    sed -i "s/MONGODB_PASSWORD_PLACEHOLDER/$MONGODB_PASSWORD/g" "$EXPLORER_DIR/settings.json"
+    sed -i "s/MONGODB_DATABASE_PLACEHOLDER/$MONGODB_DATABASE/g" "$EXPLORER_DIR/settings.json"
+    sed -i "s/MONGODB_PORT_PLACEHOLDER/$MONGODB_PORT/g" "$EXPLORER_DIR/settings.json"
+    sed -i "s/RPC_HOST_PLACEHOLDER/$RPC_HOST/g" "$EXPLORER_DIR/settings.json"
+    sed -i "s/RPC_PORT_PLACEHOLDER/$RPC_PORT/g" "$EXPLORER_DIR/settings.json"
+    sed -i "s/RPC_USER_PLACEHOLDER/$RPC_USER/g" "$EXPLORER_DIR/settings.json"
+    sed -i "s/RPC_PASSWORD_PLACEHOLDER/$RPC_PASSWORD/g" "$EXPLORER_DIR/settings.json"
+    sed -i "s/EXPLORER_PORT_PLACEHOLDER/$EXPLORER_PORT/g" "$EXPLORER_DIR/settings.json"
+    sed -i "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" "$EXPLORER_DIR/settings.json"
     
-    success "settings.json generated with blockchain data"
+    success "settings.json generated for NITO"
 }
 
 ################################################################################
-# STEP 14: Setup Logo (Placeholder)
+# STEP 13: Setup Logo
 ################################################################################
 setup_logo() {
     info "Setting up default logo..."
     mkdir -p "$EXPLORER_DIR/public/img"
-    
     info "To customize the logo, replace: $EXPLORER_DIR/public/img/logo.png"
 }
 
 ################################################################################
-# STEP 15: Configure Firewall
+# STEP 14: Configure Firewall
 ################################################################################
 configure_firewall() {
     info "Configuring firewall..."
@@ -807,7 +1158,7 @@ configure_firewall() {
 }
 
 ################################################################################
-# STEP 16: Install SSL Certificate - SAFE VERSION
+# STEP 15: Install SSL Certificate
 ################################################################################
 install_ssl() {
     info "Installing Certbot..."
@@ -823,6 +1174,12 @@ install_ssl() {
         snap install --classic certbot
         ln -sf /snap/bin/certbot /usr/bin/certbot
     }
+    
+    # Check if certificate already exists
+    if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+        success "SSL certificate already exists for $DOMAIN"
+        return 0
+    fi
     
     # Use unique temporary config
     info "Configuring Nginx for Certbot..."
@@ -840,12 +1197,7 @@ EOF
     nginx -t && systemctl reload nginx
     
     info "Generating SSL certificate..."
-    if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
-        warning "Certificate already exists"
-        confirm "Renew?" N && certbot --nginx -d "$DOMAIN" --force-renewal --non-interactive --agree-tos --email "admin@$DOMAIN"
-    else
-        certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email "admin@$DOMAIN" || warning "SSL generation failed (non-critical)"
-    fi
+    certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email "admin@$DOMAIN" || warning "SSL generation failed (non-critical)"
     
     # Remove temporary config
     rm -f "/etc/nginx/sites-enabled/certbot-$INSTALL_NAME"
@@ -854,16 +1206,14 @@ EOF
 }
 
 ################################################################################
-# STEP 17: Final Nginx Configuration - SAFE VERSION
+# STEP 16: Final Nginx Configuration
 ################################################################################
 configure_nginx_final() {
     info "Final Nginx configuration..."
     
-    # Unique config name per installation
-    local nginx_config="/etc/nginx/sites-available/explorer-$INSTALL_NAME"
+    local nginx_config="/etc/nginx/sites-available/$INSTALL_NAME-explorer"
     
-    # Backup if exists
-    [ -f "$nginx_config" ] && safe_backup "$nginx_config" "nginx-explorer-$INSTALL_NAME-old"
+    [ -f "$nginx_config" ] && safe_backup "$nginx_config" "nginx-$INSTALL_NAME-old"
     
     cat > "$nginx_config" <<EOF
 server {
@@ -889,51 +1239,48 @@ server {
 }
 EOF
     
-    ln -sf "$nginx_config" "/etc/nginx/sites-enabled/explorer-$INSTALL_NAME"
+    ln -sf "$nginx_config" "/etc/nginx/sites-enabled/$INSTALL_NAME-explorer"
     nginx -t && systemctl reload nginx
     success "Nginx configured"
 }
 
 ################################################################################
-# STEP 18: Install PM2 and Start Explorer - SAFE VERSION
+# STEP 17: Install PM2 and Start Explorer - Unique Name
 ################################################################################
 install_pm2() {
     info "Installing PM2..."
     command -v pm2 &> /dev/null || "$NPM_PATH" install -g pm2
     
     export PATH="$PATH:/root/.nvm/versions/node/v16.20.2/bin"
-    echo 'export PATH="$PATH:/root/.nvm/versions/node/v16.20.2/bin"' >> ~/.bashrc
     
     cd "$EXPLORER_DIR"
     
-    # Check for existing PM2 processes for this explorer
-    if pm2 list | grep -q "explorer"; then
-        warning "PM2 processes already running"
-        confirm "Stop existing processes for this installation?" && {
-            # Only delete processes running from this directory
-            pm2 delete all 2>/dev/null || true
-        }
+    # Check for existing PM2 process with same name
+    if pm2 list | grep -q "$PM2_APP_NAME"; then
+        warning "PM2 process $PM2_APP_NAME already exists"
+        confirm "Restart it?" Y && pm2 restart "$PM2_APP_NAME"
+        return 0
     fi
     
-    info "Starting explorer..."
-    "$NPM_PATH" run start-pm2 || {
+    info "Starting NITO explorer as $PM2_APP_NAME..."
+    
+    # Start with unique name
+    pm2 start bin/instance --name "$PM2_APP_NAME" -i 1 || {
         error "Failed to start explorer"
         cat "$EXPLORER_DIR/tmp/explorer.log" 2>/dev/null
         fatal "Explorer start failed"
     }
     
-    success "Explorer started"
+    success "Explorer started as $PM2_APP_NAME"
     
-    # Only setup PM2 startup if not already configured
+    pm2 save
+    
+    # Setup PM2 startup if not already configured
     if ! systemctl is-enabled --quiet pm2-root 2>/dev/null; then
         pm2 startup systemd -u root --hp /root
-        pm2 save
-        
         systemctl daemon-reload
         systemctl enable pm2-root
         systemctl start pm2-root
-    else
-        pm2 save
     fi
     
     sleep 2
@@ -941,13 +1288,13 @@ install_pm2() {
 }
 
 ################################################################################
-# STEP 19: Setup Synchronization
+# STEP 18: Setup Synchronization
 ################################################################################
 setup_sync() {
     info "Configuring synchronization..."
     cd "$EXPLORER_DIR"
     
-    cat > "$EXPLORER_DIR/sync-explorer.sh" <<EOF
+    cat > "$EXPLORER_DIR/sync-$INSTALL_NAME.sh" <<EOF
 #!/bin/bash
 export NVM_DIR="/root/.nvm"
 [ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"
@@ -955,19 +1302,19 @@ cd $EXPLORER_DIR
 npm run sync-blocks >> $EXPLORER_DIR/sync-cron.log 2>&1
 EOF
     
-    chmod +x "$EXPLORER_DIR/sync-explorer.sh"
-    nohup "$EXPLORER_DIR/sync-explorer.sh" > "$EXPLORER_DIR/sync-initial.log" 2>&1 &
+    chmod +x "$EXPLORER_DIR/sync-$INSTALL_NAME.sh"
+    nohup "$EXPLORER_DIR/sync-$INSTALL_NAME.sh" > "$EXPLORER_DIR/sync-initial.log" 2>&1 &
     
     # Add cron job only if not already present
-    if ! crontab -l 2>/dev/null | grep -q "$EXPLORER_DIR/sync-explorer.sh"; then
-        (crontab -l 2>/dev/null; echo "*/1 * * * * /bin/bash $EXPLORER_DIR/sync-explorer.sh") | crontab -
+    if ! crontab -l 2>/dev/null | grep -q "$EXPLORER_DIR/sync-$INSTALL_NAME.sh"; then
+        (crontab -l 2>/dev/null; echo "*/1 * * * * /bin/bash $EXPLORER_DIR/sync-$INSTALL_NAME.sh") | crontab -
     fi
     
     success "Synchronization configured"
 }
 
 ################################################################################
-# STEP 20: Final Validation
+# STEP 19: Final Validation
 ################################################################################
 final_validation() {
     info "Running final validation..."
@@ -975,25 +1322,23 @@ final_validation() {
     systemctl is-active --quiet pm2-root && success "✅ PM2 service: active" || error "❌ PM2 service: inactive"
     docker ps | grep -q "$MONGODB_CONTAINER" && success "✅ MongoDB: running" || error "❌ MongoDB: stopped"
     systemctl is-active --quiet nginx && success "✅ Nginx: active" || error "❌ Nginx: inactive"
-    pm2 list | grep -q "online" && success "✅ Explorer: running" || error "❌ Explorer: stopped"
-    crontab -l | grep -q "$EXPLORER_DIR/sync-explorer.sh" && success "✅ Cron: configured" || error "❌ Cron: missing"
+    pm2 list | grep -q "$PM2_APP_NAME" && success "✅ Explorer ($PM2_APP_NAME): running" || error "❌ Explorer: stopped"
+    crontab -l | grep -q "$EXPLORER_DIR/sync-$INSTALL_NAME.sh" && success "✅ Cron: configured" || error "❌ Cron: missing"
 }
 
 ################################################################################
-# STEP 21: Show Summary
+# STEP 20: Show Summary
 ################################################################################
 show_summary() {
     echo ""
     echo "=========================================="
-    success "🎉 INSTALLATION COMPLETE!"
+    success "🎉 NITO EXPLORER INSTALLATION COMPLETE!"
     echo "=========================================="
     echo ""
-    highlight "BLOCKCHAIN INFORMATION"
+    highlight "NITO EXPLORER INFORMATION"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "Installation Name: $INSTALL_NAME"
-    echo "Coin             : $COIN_SYMBOL"
-    echo "Chain            : $CHAIN"
-    echo "Genesis Block    : ${GENESIS_HASH:0:32}..."
+    echo "Coin             : $COIN_NAME ($COIN_SYMBOL)"
+    echo "Genesis Block    : ${GENESIS_BLOCK:0:32}..."
     echo "Genesis TX       : ${GENESIS_TX:0:32}..."
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
@@ -1006,23 +1351,23 @@ show_summary() {
     info "INSTALLATION DETAILS"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Directory        : $EXPLORER_DIR"
+    echo "PM2 App Name     : $PM2_APP_NAME"
     echo "MongoDB Container: $MONGODB_CONTAINER"
-    echo "Data Directory   : $MONGODB_DATA_DIR"
-    echo "Backup Location  : $BACKUP_DIR"
+    echo "MongoDB Database : $MONGODB_DATABASE"
+    echo "MongoDB User     : $MONGODB_USER"
+    echo "Explorer Port    : $EXPLORER_PORT"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     info "USEFUL COMMANDS"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  pm2 list                    # Check status"
-    echo "  pm2 logs                    # View logs"
-    echo "  pm2 restart all             # Restart explorer"
-    echo "  docker ps                   # View containers"
+    echo "  pm2 list                          # Check all explorers"
+    echo "  pm2 logs $PM2_APP_NAME            # View NITO logs"
+    echo "  pm2 restart $PM2_APP_NAME         # Restart NITO explorer"
+    echo "  docker ps                         # View containers"
     echo "  tail -f $EXPLORER_DIR/sync-initial.log"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     warning "⏳ Initial sync in progress (may take 10-30 min)"
-    echo ""
-    success "All backups saved to: $BACKUP_DIR"
     echo ""
 }
 
@@ -1032,20 +1377,19 @@ show_summary() {
 main() {
     echo ""
     echo "╔════════════════════════════════════════════╗"
-    echo "║  Universal Blockchain Explorer v$SCRIPT_VERSION  ║"
-    echo "║  Multi-Chain SHA256 - SAFE MODE           ║"
+    echo "║     NITO Explorer Installer v$SCRIPT_VERSION     ║"
+    echo "║     Multi-Explorer Compatible              ║"
     echo "╚════════════════════════════════════════════╝"
     echo ""
     
     check_prerequisites
     install_cron
     collect_configuration
-    fetch_blockchain_info
     create_directories
     install_system_dependencies
     install_nodejs
     install_docker
-    install_mongodb
+    configure_mongodb
     install_nginx
     install_eiquidus
     generate_settings
