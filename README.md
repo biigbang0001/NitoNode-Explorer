@@ -1,197 +1,213 @@
+# NITO Explorer - Installation Multi-Explorer Compatible
+
 ## Présentation
 
-### UPDATE 25/03/2025 choix d'instalation avec ou sans nœud , détection et connexion automatique au nœud.
-
-**NitoNode-Explorer** est un script d'auto-installation conçu pour déployer un nœud complet NitoCoin ([https://github.com/NitoNetwork/Nito-core](https://github.com/NitoNetwork/Nito-core)) et un explorateur de blockchain eIquidus ([https://github.com/team-exor/eiquidus](https://github.com/team-exor/eiquidus)) sur un serveur Linux (Ubuntu 22.04 / Debian 12 recommandé). Ce script automatise l'installation, la configuration, et la synchronisation des deux composants, te permettant d'avoir un nœud opérationnel et un explorateur web accessible en quelques étapes simples.
+**NITO Explorer** est un script d'auto-installation conçu pour déployer un explorateur de blockchain eIquidus pour NitoCoin. Ce script est **compatible avec d'autres explorateurs** sur le même serveur (FixedCoin, etc.) grâce à des noms uniques pour MongoDB, PM2, et les ports.
 
 ### Fonctionnalités
-- Installation automatique du nœud NitoCoin (version 2.0.1).
-- Installation et configuration de l'explorateur eIquidus avec une interface personnalisée pour NitoCoin.
-- Synchronisation automatique de la blockchain pour le nœud et l'explorateur (toutes les minutes via un cron).
-- Configuration d'un certificat SSL via Certbot ([https://certbot.eff.org/](https://certbot.eff.org/)) pour sécuriser l'accès à l'explorateur, avec des chemins SSL adaptés dynamiquement au domaine saisi.
-- Personnalisation avec des images spécifiques (logo, favicons, etc.) pour l'explorateur.
-- Configuration sécurisée des identifiants RPC (nom d'utilisateur et mot de passe) définis par l'utilisateur au début de l'installation.
-- Redémarrage automatique du nœud et de l'explorateur (y compris MongoDB) en cas de redémarrage du serveur.
-- Option pour choisir le répertoire d'installation.
+- Installation automatique de l'explorateur eIquidus pour NITO
+- **Compatible multi-explorer** : peut coexister avec d'autres explorateurs sur le même serveur
+- Détecte et réutilise le container MongoDB existant (mongodb-explorer)
+- Base de données séparée : `explorerdb-nito`
+- Utilisateur MongoDB séparé : `eiquidus-nito`
+- Processus PM2 séparé : `explorer-nito`
+- Port par défaut : 3001 (configurable)
+- Configuration SSL via Certbot
+- Synchronisation automatique via cron
+
+### Configuration Multi-Explorer
+
+| Élément | NITO | FixedCoin (exemple) |
+|---------|------|---------------------|
+| PM2 App Name | `explorer-nito` | `explorer` |
+| MongoDB Database | `explorerdb-nito` | `explorerdb` |
+| MongoDB User | `eiquidus-nito` | `eiquidus` |
+| Explorer Port | `3001` | `3003` |
+| Install Directory | `/var/explorer-nito` | `/var/fixedcoin/explorer` |
 
 ## Prérequis
-Avant de commencer, assure-toi d'avoir :
-- Un serveur Linux (Ubuntu 22.04 / Debian 12 recommandé).
-- Accès root sur le serveur.
-- Une connexion Internet stable.
-- Un nom de domaine configuré pour pointer vers l'adresse IP de ton serveur (nécessaire pour l'explorateur).
-    - Les ports nécessaires (8820 pour le nœud, 80/443 pour l'explorateur doivent être accessibles. Le script ouvrira automatiquement ces ports via UFW.
 
-    ## Installation
+- Serveur Linux (Ubuntu 22.04 / Debian 12 recommandé)
+- Accès root
+- Connexion Internet stable
+- Nom de domaine configuré (ex: `nito-explorer.nitopool.fr`)
+- Ports 80/443 accessibles
 
-    L'installation est entièrement automatisée. Suis ces étapes pour installer le nœud NitoCoin et l'explorateur eIquidus :
-    - Le script te posera cinq questions :
-     - **Nom de domaine** : Entre le domaine de ton explorateur (ex. : `nito-explorer.exemple.fr`).
-     - **Port RPC** : Entre le port RPC de ton nœud Nito (par défaut : `8825`).
-     - **Nom d'utilisateur RPC** : Entre un nom d'utilisateur pour l'accès RPC (ex. : `user`).
-     - **Mot de passe RPC** : Entre un mot de passe sécurisé pour l'accès RPC (ex. : `pass`).
-     - **Répertoire d'installation** : Entre le répertoire où installer l'explorateur (ex. : `/var/www`, appuie sur Entrée pour utiliser `/root` par défaut).
+## Installation
 
-   **Télécharger la commande d'installation** 
-        
-   Exécute la commande suivante pour télécharger et executer le script depuis GitHub ([https://github.com/biigbang0001/NitoNode-Explorer](https://github.com/biigbang0001/NitoNode-Explorer)) :  
-   ```bash
-   wget https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/install_nito_node_explorer.sh
-   chmod +x install_nito_node_explorer.sh
-   ./install_nito_node_explorer.sh
-   ```
+```bash
+wget https://raw.githubusercontent.com/biigbang0001/NitoNode-Explorer/main/install_nito_explorer.sh
+chmod +x install_nito_explorer.sh
+./install_nito_explorer.sh
+```
 
-   **Attendre la fin de l'installation** :
-   - L'installation prend environ 10 à 20 minutes, selon la vitesse de ton serveur et de ta connexion Internet.
-   - À la fin, un message s'affichera avec l'URL de ton explorateur (ex. : `https://nito-explorer.exemple.fr`), les identifiants que tu as choisis, et le répertoire d'installation.
-   - L'explorateur peut initialement être en retard dans la synchronisation. Attends quelques minutes pour que le cron mette à jour les données.
+### Questions posées
+
+1. **Nom de domaine** : ex. `nito-explorer.nitopool.fr`
+2. **RPC Host** : IP du nœud NITO (défaut: `127.0.0.1`)
+3. **RPC Port** : Port RPC (défaut: `8825`)
+4. **RPC Username** : Utilisateur RPC (défaut: `user`)
+5. **RPC Password** : Mot de passe RPC (défaut: `pass`)
 
 ## Utilisation
 
-Une fois l'installation terminée, le nœud NitoCoin et l'explorateur eIquidus seront opérationnels. Voici comment les gérer et les utiliser.
-
 ### Accéder à l'explorateur
-- Ouvre ton navigateur et accède à l'URL suivante :  
-  ```
-  https://<ton-domaine>
-  ```
-  Exemple : `https://nito-explorer.exemple.fr`
+```
+https://nito-explorer.nitopool.fr
+```
 
-### Commandes pour gérer le nœud NitoCoin
-Le nœud NitoCoin est géré via systemd ([https://systemd.io/](https://systemd.io/)). Voici les commandes utiles (remplace `<répertoire choisi>` par le répertoire que tu as spécifié, ex. `/root` ou `/var/www`) :
+### Commandes PM2 (NITO spécifique)
 
-- Vérifier le statut du nœud :  
-  ```bash
-  systemctl status nitocoin
-  ```
-- Arrêter le nœud :  
-  ```bash
-  systemctl stop nitocoin
-  ```
-- Redémarrer le nœud :  
-  ```bash
-  systemctl restart nitocoin
-  ```
-- Vérifier la progression de la synchronisation :  
-  ```bash
-  nito-cli -conf=<répertoire choisi>/.nito/nito.conf getblockcount
-  ```
-- Obtenir des informations sur le nœud :  
-  ```bash
-  nito-cli -conf=<répertoire choisi>/.nito/nito.conf getinfo
-  ```
-- Consulter les logs du nœud :  
-  ```bash
-  journalctl -u nitocoin
-  ```
+```bash
+# Voir tous les explorateurs
+pm2 list
 
-### Commandes pour gérer l'explorateur eIquidus
-L'explorateur eIquidus est géré via PM2 ([https://pm2.keymetrics.io/](https://pm2.keymetrics.io/)), et la base de données utilise MongoDB ([https://www.mongodb.com/](https://www.mongodb.com/)) dans un conteneur Docker. Voici les commandes utiles (remplace `<répertoire choisi>` par le répertoire que tu as spécifié, ex. `/root` ou `/var/www`) :
+# Voir uniquement NITO
+pm2 show explorer-nito
 
-- Vérifier le statut de l'explorateur :  
-  ```bash
-  pm2 list
-  ```
-- Arrêter l'explorateur :  
-  ```bash
-  pm2 stop explorer
-  ```
-- Redémarrer l'explorateur :  
-  ```bash
-  pm2 restart explorer
-  ```
-- Consulter les logs de l'explorateur :  
-  ```bash
-  pm2 logs explorer
-  ```
-- Vérifier l'état de MongoDB :  
-  ```bash
-  docker ps  # Vérifie que le conteneur MongoDB est en cours d'exécution
-  docker logs mongodb  # Affiche les logs de MongoDB
-  ```
-- Forcer une resynchronisation manuelle de l'explorateur :  
-  ```bash
-  cd <répertoire choisi>/explorer
-  npm run sync-blocks
-  ```
-- Vérifier l'état de la synchronisation automatique (cron) :  
-  ```bash
-  crontab -l
-  ```
-- Vérifier l'état de Nginx :  
-  ```bash
-  systemctl status nginx
-  ```
-- Redémarrer Nginx :  
-  ```bash
-  systemctl restart nginx
-  ```
+# Logs NITO
+pm2 logs explorer-nito
+
+# Redémarrer NITO
+pm2 restart explorer-nito
+
+# Arrêter NITO (sans affecter les autres)
+pm2 stop explorer-nito
+```
+
+### Commandes MongoDB
+
+```bash
+# Vérifier le container
+docker ps | grep mongodb
+
+# Se connecter à la base NITO
+docker exec -it mongodb-explorer mongosh -u eiquidus-nito -p 'Nd^p2d77ceBX!L' --authenticationDatabase explorerdb-nito
+
+# Lister les bases
+docker exec mongodb-explorer mongosh -u eiquidus -p 'Nd^p2d77ceBX!L' --authenticationDatabase admin --eval "show dbs"
+```
+
+### Synchronisation manuelle
+
+```bash
+cd /var/explorer-nito/explorer
+npm run sync-blocks
+```
+
+### Vérifier le cron
+
+```bash
+crontab -l | grep nito
+```
+
+## Structure des fichiers
+
+```
+/var/explorer-nito/
+├── explorer/
+│   ├── settings.json        # Configuration NITO
+│   ├── sync-nito.sh         # Script de synchronisation
+│   ├── sync-cron.log        # Logs du cron
+│   └── public/img/          # Logos et images
+```
 
 ## Dépannage
 
-Si tu rencontres des problèmes, voici quelques étapes pour diagnostiquer et résoudre les erreurs (remplace `<répertoire choisi>` par le répertoire que tu as spécifié, ex. `/root` ou `/var/www`) :
+### L'explorateur ne démarre pas
 
-- **Si l'explorateur ne se charge pas** :
-  - Vérifie que Nginx ([https://nginx.org/](https://nginx.org/)) est en cours d'exécution :  
-    ```bash
-    systemctl status nginx
-    ```
-  - Vérifie les logs de l'explorateur :  
-    ```bash
-    pm2 logs explorer
-    ```
-  - Vérifie que MongoDB ([https://www.mongodb.com/](https://www.mongodb.com/)) est en cours d'exécution :  
-    ```bash
-    docker ps
-    ```
-  - Redémarre l'explorateur si nécessaire :  
-    ```bash
-    pm2 restart explorer
-    ```
+```bash
+# Vérifier les logs
+pm2 logs explorer-nito --lines 50
 
-- **Si l'explorateur n'est pas à jour** :
-  - Vérifie que le cron est bien configuré :  
-    ```bash
-    crontab -l
-    ```
-  - Vérifie les logs du cron pour voir s'il y a des erreurs :  
-    ```bash
-    grep CRON /var/log/syslog
-    ```
-  - Force une synchronisation manuelle :  
-    ```bash
-    cd <répertoire choisi>/explorer
-    npm run sync-blocks
-    ```
+# Vérifier la configuration MongoDB
+grep -A5 dbsettings /var/explorer-nito/explorer/settings.json
+```
 
-- **Si le nœud ne se synchronise pas** :
-  - Vérifie les logs du nœud :  
-    ```bash
-    journalctl -u nitocoin
-    ```
-  - Assure-toi que le port 8820 est ouvert :  
-    ```bash
-    ufw status
-    ```
-  - Redémarre le nœud si nécessaire :  
-    ```bash
-    systemctl restart nitocoin
-    ```
+### Erreur de connexion MongoDB
 
-- **Si le certificat SSL ne fonctionne pas** :
-  - Vérifie les logs de Certbot :  
-    ```bash
-    cat /var/log/letsencrypt/letsencrypt.log
-    ```
-  - Renouvelle manuellement le certificat :  
-    ```bash
-    certbot renew
-    ```
-  - Redémarre Nginx :  
-    ```bash
-    systemctl restart nginx
-    ```
+```bash
+# Tester la connexion
+docker exec mongodb-explorer mongosh -u eiquidus-nito -p 'Nd^p2d77ceBX!L' --authenticationDatabase explorerdb-nito --eval "db.stats()"
+
+# Recréer l'utilisateur si nécessaire
+docker exec mongodb-explorer mongosh --quiet --eval "
+conn = new Mongo('mongodb://eiquidus:Nd^p2d77ceBX!L@localhost:27017/admin');
+db = conn.getDB('explorerdb-nito');
+db.createUser({
+    user: 'eiquidus-nito',
+    pwd: 'Nd^p2d77ceBX!L',
+    roles: [{ role: 'readWrite', db: 'explorerdb-nito' }]
+});
+"
+```
+
+### Nginx renvoie 502
+
+```bash
+# Vérifier que l'explorer écoute sur le bon port
+curl -I http://localhost:3001
+
+# Vérifier la config nginx
+cat /etc/nginx/sites-available/nito-explorer
+
+# Redémarrer nginx
+nginx -t && systemctl reload nginx
+```
+
+### L'explorateur n'est pas à jour
+
+```bash
+# Vérifier le cron
+crontab -l | grep nito
+
+# Forcer la synchronisation
+cd /var/explorer-nito/explorer
+npm run sync-blocks
+
+# Voir les logs de sync
+tail -f /var/explorer-nito/explorer/sync-cron.log
+```
+
+## Désinstallation
+
+Pour supprimer NITO sans affecter les autres explorateurs :
+
+```bash
+# Arrêter et supprimer de PM2
+pm2 stop explorer-nito
+pm2 delete explorer-nito
+pm2 save
+
+# Supprimer le cron
+crontab -l | grep -v "sync-nito.sh" | crontab -
+
+# Supprimer les fichiers
+rm -rf /var/explorer-nito
+
+# Supprimer la base MongoDB (optionnel)
+docker exec mongodb-explorer mongosh -u eiquidus -p 'Nd^p2d77ceBX!L' --authenticationDatabase admin --eval "
+db.getSiblingDB('explorerdb-nito').dropDatabase()
+"
+
+# Supprimer la config nginx
+rm /etc/nginx/sites-enabled/nito-explorer
+rm /etc/nginx/sites-available/nito-explorer
+nginx -t && systemctl reload nginx
+```
+
+## Informations NITO
+
+| Paramètre | Valeur |
+|-----------|--------|
+| Coin | NITO |
+| Symbole | NITO |
+| Port RPC | 8825 |
+| Port P2P | 8820 |
+| Genesis Block | `00000000103d1acbedc9bb8ff2af8cb98a751965e784b4e1f978f3d5544c6c3c` |
+| Genesis TX | `90b863a727d4abf9838e8df221052e418d70baf996e2cea3211e8df4da1bb131` |
 
 ## Support
-Si tu as des questions ou des problèmes, tu peux ouvrir une issue sur ce dépôt GitHub ([https://github.com/biigbang0001/NitoNode-Explorer/issues](https://github.com/biigbang0001/NitoNode-Explorer/issues)).
-```
+
+Pour toute question ou problème, ouvrir une issue sur GitHub :
+https://github.com/biigbang0001/NitoNode-Explorer/issues
